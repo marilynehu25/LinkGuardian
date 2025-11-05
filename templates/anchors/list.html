@@ -1,0 +1,86 @@
+{% extends "_layout/base.html" %}
+{% from "_layout/components.html" import content_card, status_badge, alert %}
+{% from "_layout/charts_simple.html" import pie_chart, bar_chart, donut_chart %}
+
+{% block title %}Ancres - LinkGuardian{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Ancres de liens</h1>
+            <p class="text-gray-400 mt-1">Analysez la diversité et l'optimisation de vos textes d'ancrage</p>
+        </div>
+    </div>
+    
+    <!-- Alertes sur-optimisation -->
+    {% if over_optimized_anchors %}
+    {{ alert("⚠️ " + over_optimized_anchors|length|string + " ancre(s) potentiellement sur-optimisée(s) détectée(s)", "warning") }}
+    {% endif %}
+    
+    <!-- Statistiques -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-white">{{ stats.total_anchors }}</div>
+            <div class="text-sm text-gray-400">Ancres uniques</div>
+        </div>
+        
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-accent">{{ stats.branded_percentage }}%</div>
+            <div class="text-sm text-gray-400">Ancres de marque</div>
+        </div>
+        
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-primary">{{ stats.exact_match_percentage }}%</div>
+            <div class="text-sm text-gray-400">Correspondance exacte</div>
+        </div>
+        
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-warn">{{ stats.generic_percentage }}%</div>
+            <div class="text-sm text-gray-400">Ancres génériques</div>
+        </div>
+        
+    </div>
+    
+    <!-- Graphiques -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Distribution par type -->
+        {{ donut_chart(
+            chart_id="anchor-types",
+            title="Répartition par type d'ancre",
+            data=pie_data
+        ) }}
+        
+        <!-- Top ancres les plus utilisées -->
+        {{ bar_chart(
+            chart_id="top-anchors-usage",
+            title="Top 15 ancres les plus utilisées",
+            orientation="h",
+            data=top_data 
+        ) }}
+    </div>
+    
+    <!-- Barre de recherche -->
+    <div class="bg-gray-900 rounded-2xl p-4 flex items-center justify-between">
+        <form method="get" action="{{ url_for('anchors_routes.anchors_list') }}" class="w-full flex items-center space-x-3">
+            <input 
+                type="text"
+                name="q"
+                value="{{ request.args.get('q', '') }}"
+                placeholder="Rechercher une ancre..."
+                class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+            <button type="submit" class="btn-primary px-4 py-2 rounded-lg">
+                🔍 Rechercher
+            </button>
+        </form>
+    </div>
+
+
+    <div id="anchors-table">
+        {% include "anchors/_anchors_table.html" with context %}
+    </div>
+
+</div>
+{% endblock %}

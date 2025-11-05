@@ -1,0 +1,440 @@
+{% extends "_layout/base.html" %}
+{% from "_layout/components.html" import content_card, status_badge, alert %}
+
+{% block title %}Opportunités - LinkGuardian{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Opportunités de liens</h1>
+            <p class="text-gray-400 mt-1">Découvrez de nouvelles possibilités d'acquisition de backlinks</p>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <button class="btn-secondary">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Actualiser l'analyse
+            </button>
+            
+            <button class="btn-primary">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                Nouvelle campagne
+            </button>
+        </div>
+    </div>
+    
+    <!-- Alertes -->
+    {{ alert("🚀 12 nouvelles opportunités détectées cette semaine", "info") }}
+    
+    <!-- Statistiques -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-primary">47</div>
+            <div class="text-sm text-gray-400">Opportunités actives</div>
+            <div class="text-xs text-accent mt-1">+12 cette semaine</div>
+        </div>
+        
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-accent">23</div>
+            <div class="text-sm text-gray-400">Haute priorité</div>
+            <div class="text-xs text-warn mt-1">Score > 8.0</div>
+        </div>
+        
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-warn">15</div>
+            <div class="text-sm text-gray-400">En cours de contact</div>
+            <div class="text-xs text-gray-400 mt-1">Suivi actif</div>
+        </div>
+        
+        <div class="bg-gray-900 rounded-2xl p-6">
+            <div class="text-2xl font-bold text-white">8</div>
+            <div class="text-sm text-gray-400">Liens obtenus</div>
+            <div class="text-xs text-accent mt-1">Ce mois-ci</div>
+        </div>
+    </div>
+    
+    <!-- Filtres -->
+    <div class="bg-gray-900 rounded-2xl shadow-lg p-6">
+        <form hx-get="/opportunities/partial/table" hx-target="#opportunities-table" hx-push-url="true" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Rechercher</label>
+                <input type="text" 
+                       name="q" 
+                       placeholder="Domaine, mot-clé..."
+                       class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Priorité</label>
+                <select name="priority" class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="all">Toutes</option>
+                    <option value="high">Haute (8-10)</option>
+                    <option value="medium">Moyenne (6-8)</option>
+                    <option value="low">Faible (0-6)</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Type</label>
+                <select name="type" class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="all">Tous</option>
+                    <option value="competitor_analysis">Analyse concurrents</option>
+                    <option value="broken_links">Liens cassés</option>
+                    <option value="guest_posting">Guest posting</option>
+                    <option value="resource_pages">Pages ressources</option>
+                    <option value="mentions">Mentions non liées</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Statut</label>
+                <select name="status" class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="all">Tous</option>
+                    <option value="new">Nouveau</option>
+                    <option value="contacted">Contacté</option>
+                    <option value="in_progress">En cours</option>
+                    <option value="completed">Terminé</option>
+                    <option value="rejected">Rejeté</option>
+                </select>
+            </div>
+            
+            <div class="flex items-end">
+                <button type="submit" class="btn-primary w-full">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    Filtrer
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Table des opportunités -->
+    <div id="opportunities-table">
+        <div class="bg-gray-900 rounded-2xl shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-800">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Opportunité</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Score</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Métriques</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Statut</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Détectée</th>
+                            <th class="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <!-- Opportunité 1 -->
+                        <tr class="hover:bg-gray-800/50 transition-colors">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-3">
+                                    <img src="https://www.google.com/s2/favicons?domain=techcrunch.com" 
+                                         alt="techcrunch.com" 
+                                         class="w-6 h-6 rounded">
+                                    <div>
+                                        <div class="font-medium text-white">techcrunch.com</div>
+                                        <div class="text-sm text-gray-400">Article sur les startups françaises</div>
+                                        <div class="text-xs text-gray-500 truncate max-w-xs">
+                                            /french-startups-2024-innovation
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                {{ status_badge("high_quality", "Analyse concurrents") }}
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-10 h-10 bg-accent/20 rounded-full flex items-center justify-center text-sm font-bold text-accent">
+                                        9.2
+                                    </div>
+                                    <div class="text-xs text-gray-400">
+                                        <div>Haute priorité</div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="space-y-1 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">DA:</span>
+                                        <span class="text-accent font-medium">92</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Trafic:</span>
+                                        <span class="text-primary font-medium">2.1M</span>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                {{ status_badge("info", "Nouveau") }}
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="text-sm text-white">Aujourd'hui</div>
+                                <div class="text-xs text-gray-400">09:30</div>
+                            </td>
+                            
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end space-x-2">
+                                    <button class="text-primary hover:text-primary/80 transition-colors p-2 rounded-lg hover:bg-gray-800"
+                                            title="Voir les détails">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
+                                    </button>
+                                    
+                                    <button class="text-accent hover:text-accent/80 transition-colors p-2 rounded-lg hover:bg-gray-800"
+                                            title="Contacter">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Opportunité 2 -->
+                        <tr class="hover:bg-gray-800/50 transition-colors">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-3">
+                                    <img src="https://www.google.com/s2/favicons?domain=lemonde.fr" 
+                                         alt="lemonde.fr" 
+                                         class="w-6 h-6 rounded">
+                                    <div>
+                                        <div class="font-medium text-white">lemonde.fr</div>
+                                        <div class="text-sm text-gray-400">Lien cassé détecté</div>
+                                        <div class="text-xs text-gray-500 truncate max-w-xs">
+                                            /economie/innovation-technologique
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                {{ status_badge("warning", "Liens cassés") }}
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center text-sm font-bold text-primary">
+                                        8.7
+                                    </div>
+                                    <div class="text-xs text-gray-400">
+                                        <div>Haute priorité</div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="space-y-1 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">DA:</span>
+                                        <span class="text-accent font-medium">89</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Trafic:</span>
+                                        <span class="text-primary font-medium">1.8M</span>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                {{ status_badge("warning", "Contacté") }}
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="text-sm text-white">Il y a 2 jours</div>
+                                <div class="text-xs text-gray-400">14:22</div>
+                            </td>
+                            
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end space-x-2">
+                                    <button class="text-primary hover:text-primary/80 transition-colors p-2 rounded-lg hover:bg-gray-800">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
+                                    </button>
+                                    
+                                    <button class="text-warn hover:text-warn/80 transition-colors p-2 rounded-lg hover:bg-gray-800"
+                                            title="Relancer">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Opportunité 3 -->
+                        <tr class="hover:bg-gray-800/50 transition-colors">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-3">
+                                    <img src="https://www.google.com/s2/favicons?domain=blog-marketing.fr" 
+                                         alt="blog-marketing.fr" 
+                                         class="w-6 h-6 rounded">
+                                    <div>
+                                        <div class="font-medium text-white">blog-marketing.fr</div>
+                                        <div class="text-sm text-gray-400">Page ressource SEO</div>
+                                        <div class="text-xs text-gray-500 truncate max-w-xs">
+                                            /ressources-seo-outils
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                {{ status_badge("success", "Pages ressources") }}
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-10 h-10 bg-warn/20 rounded-full flex items-center justify-center text-sm font-bold text-warn">
+                                        7.3
+                                    </div>
+                                    <div class="text-xs text-gray-400">
+                                        <div>Moyenne</div>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="space-y-1 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">DA:</span>
+                                        <span class="text-accent font-medium">67</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Trafic:</span>
+                                        <span class="text-primary font-medium">45K</span>
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                {{ status_badge("success", "En cours") }}
+                            </td>
+                            
+                            <td class="px-6 py-4">
+                                <div class="text-sm text-white">Il y a 1 semaine</div>
+                                <div class="text-xs text-gray-400">10:15</div>
+                            </td>
+                            
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end space-x-2">
+                                    <button class="text-primary hover:text-primary/80 transition-colors p-2 rounded-lg hover:bg-gray-800">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
+                                    </button>
+                                    
+                                    <button class="text-accent hover:text-accent/80 transition-colors p-2 rounded-lg hover:bg-gray-800">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Suggestions d'amélioration -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {% call content_card(title="Prochaines actions recommandées") %}
+        <div class="space-y-4">
+            <div class="flex items-start space-x-3 p-4 bg-accent/10 border border-accent/20 rounded-xl">
+                <div class="w-8 h-8 bg-accent/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span class="text-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <div class="font-medium text-white">Contacter TechCrunch</div>
+                    <div class="text-sm text-gray-400 mt-1">Opportunité haute priorité (9.2/10) - Article sur les startups françaises</div>
+                    <button class="text-accent text-xs mt-2 hover:text-accent/80">Voir le template d'email →</button>
+                </div>
+            </div>
+            
+            <div class="flex items-start space-x-3 p-4 bg-primary/10 border border-primary/20 rounded-xl">
+                <div class="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span class="text-primary font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <div class="font-medium text-white">Relancer Le Monde</div>
+                    <div class="text-sm text-gray-400 mt-1">Lien cassé signalé il y a 2 jours - Pas de réponse</div>
+                    <button class="text-primary text-xs mt-2 hover:text-primary/80">Envoyer un rappel →</button>
+                </div>
+            </div>
+            
+            <div class="flex items-start space-x-3 p-4 bg-warn/10 border border-warn/20 rounded-xl">
+                <div class="w-8 h-8 bg-warn/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span class="text-warn font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <div class="font-medium text-white">Analyser nouveaux concurrents</div>
+                    <div class="text-sm text-gray-400 mt-1">Lancer une analyse sur 3 nouveaux domaines détectés</div>
+                    <button class="text-warn text-xs mt-2 hover:text-warn/80">Démarrer l'analyse →</button>
+                </div>
+            </div>
+        </div>
+        {% endcall %}
+        
+        {% call content_card(title="Statistiques de performance") %}
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="text-center p-4 bg-gray-800/50 rounded-xl">
+                    <div class="text-xl font-bold text-accent">32%</div>
+                    <div class="text-sm text-gray-400">Taux de réponse</div>
+                </div>
+                
+                <div class="text-center p-4 bg-gray-800/50 rounded-xl">
+                    <div class="text-xl font-bold text-primary">18%</div>
+                    <div class="text-sm text-gray-400">Taux de conversion</div>
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Emails envoyés ce mois:</span>
+                    <span class="text-white font-medium">47</span>
+                </div>
+                
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Réponses reçues:</span>
+                    <span class="text-accent font-medium">15</span>
+                </div>
+                
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Liens obtenus:</span>
+                    <span class="text-accent font-medium">8</span>
+                </div>
+                
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">Temps moyen de réponse:</span>
+                    <span class="text-white font-medium">3.2 jours</span>
+                </div>
+            </div>
+            
+            <div class="pt-4 border-t border-gray-700">
+                <button class="w-full btn-secondary">
+                    Voir le rapport détaillé
+                </button>
+            </div>
+        </div>
+        {% endcall %}
+    </div>
+</div>
+{% endblock %}

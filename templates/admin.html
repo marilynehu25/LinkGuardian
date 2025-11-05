@@ -1,0 +1,43 @@
+{% extends "_layout/base.html" %}
+{% block title %}Administration{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <h1 class="text-2xl font-bold text-white">Utilisateurs</h1>
+
+  <form method="POST" action="/add_user" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <input name="username" type="text" placeholder="Nom d'utilisateur" class="form-input" required>
+    <input name="password" type="password" placeholder="Mot de passe" class="form-input" required>
+    <button type="submit" class="btn-primary">Ajouter</button>
+  </form>
+
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nom d'utilisateur</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td>{{ u.username }}</td>
+          <td class="space-x-2">
+            <form method="POST" action="/edit_user/{{ u.id }}" class="inline-flex gap-2">
+              <input name="username" type="text" value="{{ u.username }}" class="form-input" required>
+              <input name="password" type="password" placeholder="Nouveau mot de passe" class="form-input">
+              <button type="submit" class="btn-secondary">Modifier</button>
+            </form>
+            <form method="POST" action="/delete_user/{{ u.id }}" class="inline">
+              <button type="submit" class="btn-primary">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

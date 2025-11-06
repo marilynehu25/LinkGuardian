@@ -29,7 +29,7 @@ if /i "%purge_choice%"=="O" (
     echo.
     echo Vidage de la queue Redis en cours...
     
-    SET REDIS_PATH=C:\redis
+    SET REDIS_PATH=redis
     if exist "%REDIS_PATH%\redis-cli.exe" (
         "%REDIS_PATH%\redis-cli.exe" FLUSHDB >nul 2>&1
         echo OK Queue Redis videe avec succes !
@@ -79,7 +79,7 @@ echo           DEMARRAGE DE LINKGUARDIAN
 echo ================================================
 echo.
 
-SET REDIS_PATH=C:\redis
+SET REDIS_PATH=redis
 SET PROJECT_PATH=%~dp0
 SET CONDA_ENV=linkguardian
 
@@ -91,7 +91,7 @@ if not exist "%REDIS_PATH%\redis-server.exe" (
     echo Telechargez Redis ici :
     echo https://github.com/microsoftarchive/redis/releases
     echo.
-    echo Puis extrayez-le dans C:\redis
+    echo Puis extrayez-le dans redis
     echo.
     pause
     goto MENU
@@ -188,7 +188,7 @@ echo           DIAGNOSTIC LINKGUARDIAN
 echo ================================================
 echo.
 
-SET REDIS_PATH=C:\redis
+SET REDIS_PATH=redis
 SET CONDA_ENV=linkguardian
 SET ALL_OK=1
 

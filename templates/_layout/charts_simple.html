@@ -46,7 +46,7 @@
 
 <!-- Macro pour graphique en barres -->
 {% macro bar_chart(chart_id, data, title="", orientation="v") %}
-<div class="bg-gray-900 rounded-2xl shadow-lg p-6">
+<div class="bg-gray-900 rounded-2xl shadow-lg p-6" style="width: 100%; box-sizing: border-box; margin: auto;">
     {% if title %}
     <h3 class="text-lg font-semibold text-white mb-4">{{ title }}</h3>
     {% endif %}
@@ -93,6 +93,7 @@
 })();
 </script>
 {% endmacro %}
+
 
 
 {% macro pie_chart(chart_id, data, title="") %}

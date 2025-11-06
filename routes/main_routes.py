@@ -279,7 +279,7 @@ def get_http_status_distribution(user_id):
 
 
 def get_top_anchors(user_id, limit=10):
-    """Génère le top des ancres les plus utilisées"""
+    """Génère le top des ancres les plus utilisées avec retour à la ligne si nécessaire"""
     anchors = (
         Website.query.filter(
             Website.user_id == user_id,
@@ -295,22 +295,35 @@ def get_top_anchors(user_id, limit=10):
         .all()
     )
 
-    labels = [a.anchor_text for a in anchors]
+    def wrap_text(text, max_length=35):
+        if not text:
+            return text
+        words = text.split()
+        lines = []
+        current_line = []
+        current_length = 0
+
+        for word in words:
+            if current_length + len(word) <= max_length:
+                current_line.append(word)
+                current_length += len(word) + 1  # +1 pour l'espace
+            else:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+                current_length = len(word)
+        if current_line:
+            lines.append(" ".join(current_line))
+
+        return "<br>".join(lines)
+
+    labels = [wrap_text(a.anchor_text) for a in anchors]
     values = [a.count for a in anchors]
     colors = [
-        "#38bdf8",
-        "#22c55e",
-        "#f59e0b",
-        "#ef4444",
-        "#8b5cf6",
-        "#06b6d4",
-        "#84cc16",
-        "#f97316",
-        "#ec4899",
-        "#64748b",
+        "#38bdf8", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6",
+        "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#64748b"
     ]
+    return {"labels": labels, "values": values, "colors": colors[:len(labels)]}
 
-    return {"labels": labels, "values": values, "colors": colors[: len(labels)]}
 
 
 def get_pv_pt_scatter(user_id, start_date, end_date, limit=50):

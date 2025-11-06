@@ -189,10 +189,31 @@ def anchors_list():
         "colors": ["#22c55e", "#38bdf8", "#f59e0b", "#8b5cf6", "#6b7280"],
     }
 
+    def wrap_text(text, max_length=35):
+        if not text:
+            return text
+        words = text.split()
+        lines = []
+        current_line = []
+        current_length = 0
+
+        for word in words:
+            if current_length + len(word) <= max_length:
+                current_line.append(word)
+                current_length += len(word) + 1  # +1 pour l'espace
+            else:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+                current_length = len(word)
+        if current_line:
+            lines.append(" ".join(current_line))
+
+        return "<br>".join(lines)
+
     # Top 15 ancres (basé sur le tri actuel)
     top_sorted = anchors[:15]
     top_data = {
-        "labels": [a["text"] for a in top_sorted],
+        "labels": [wrap_text(a["text"]) for a in top_sorted],
         "values": [a["count"] for a in top_sorted],
         "colors": ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"] * 3,
     }

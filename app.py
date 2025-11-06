@@ -4,6 +4,8 @@ from asyncio import Semaphore
 from aiohttp import ClientTimeout
 from celery.schedules import crontab
 from flask import Flask
+from flask_admin import Admin
+from flask_admin.contrib.sqla import ModelView
 from flask_executor import Executor
 from flask_login import current_user
 from flask_migrate import Migrate
@@ -13,6 +15,7 @@ from celery_app import celery
 
 # librairie SQLAlchemy
 from database import db
+from models import User, Website  # ajoute ici les modèles que tu veux gérer
 from routes.anchors_routes import anchors_routes
 from routes.auth_routes import authentification
 from routes.backlinks_routes import backlinks_routes
@@ -136,6 +139,12 @@ def inject_global_stats():
 
     return dict(total_backlinks=0, total_unique_anchors=0, total_unique_domains=0)
 
+
+# Création de l'interface admin
+admin = Admin(app, name="LinkGuardian Admin")
+
+# Ajout des vues (tables)
+admin.add_view(ModelView(User, db.session))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

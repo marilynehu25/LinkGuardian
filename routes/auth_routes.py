@@ -151,17 +151,4 @@ def delete_user(user_id):
     return redirect(url_for("authentification.admin"))
 
 
-# Route pour afficher la page d'administration
-@authentification.route("/admin", methods=["GET"])
-@login_required
-def admin():
-    if current_user.role != "admin":
-        # flash('Accès refusé, vous devez être un administrateur.')
-        return redirect(url_for("main_routes.index"))
-
-    users = User.query.all()  # Récupérer tous les utilisateurs
-    return render_template(
-        "admin.html", users=users
-    )  # Passer les utilisateurs au template
-
 

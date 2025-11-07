@@ -2,11 +2,11 @@ from flask import Blueprint, jsonify, request
 
 from models import Source, db
 
-source_rout = Blueprint("source_routes", __name__)
+source_routes = Blueprint("source_routes", __name__)
 
 
 # Route pour ajouter une source dans la liste des sources
-@source_rout.route("/add_source", methods=["POST"])
+@source_routes.route("/add_source", methods=["POST"])
 def add_source():
     data = request.get_json()
     new_source = Source(nom=data["nom"])
@@ -16,7 +16,7 @@ def add_source():
 
 
 # Route pour supprimer une source
-@source_rout.route("/delete_source", methods=["POST"])
+@source_routes.route("/delete_source", methods=["POST"])
 def delete_source():
     data = request.get_json()
     source_name = data["nom"]
@@ -31,7 +31,7 @@ def delete_source():
 
 
 # Route pour récupérer toutes les sources
-@source_rout.route("/get_sources", methods=["GET"])
+@source_routes.route("/get_sources", methods=["GET"])
 def get_sources():
     sources = Source.query.all()
     return jsonify([{"nom": s.nom} for s in sources])

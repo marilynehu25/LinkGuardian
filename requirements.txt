@@ -38,6 +38,7 @@ executing @ file:///home/conda/feedstock_root/build_artifacts/executing_17567293
 eyed3==0.9.7
 filetype==1.2.0
 Flask==3.0.3
+Flask-Admin==1.6.1
 Flask-Executor==1.0.0
 Flask-Login==0.6.3
 Flask-Migrate==4.0.5
@@ -119,5 +120,6 @@ vine==5.1.0
 wcwidth @ file:///home/conda/feedstock_root/build_artifacts/wcwidth_1758622279606/work
 Werkzeug==3.0.6
 wsproto==1.2.0
+WTForms==3.2.1
 yarl==1.9.3
 zipp @ file:///home/conda/feedstock_root/build_artifacts/zipp_1749421620841/work

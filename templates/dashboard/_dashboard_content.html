@@ -1,5 +1,5 @@
 {% from "_layout/components.html" import kpi_card, content_card, alert, status_badge, info_tooltip %}
-{% from "_layout/charts_simple.html" import line_chart, bar_chart, pie_chart, scatter_chart, donut_chart %}
+{% from "_layout/charts_simple.html" import line_chart, bar_chart, pie_chart, scatter_chart, donut_chart, bubble_chart %}
 {% from "_layout/charts.html" import stacked_bar_chart , gauge_chart %}
 
 <!-- Alertes -->
@@ -134,7 +134,7 @@
 
 <!-- Page Value vs Page Trust -->
 <div class="grid grid-cols-1 gap-6 mt-6">
-    {{ scatter_chart(
+    {{ bubble_chart(
         chart_id="pv-pt-scatter-" ~ timestamp|string,
         title="Page Value vs Page Trust (Top 50 pages)",
         x_title="Page Value",

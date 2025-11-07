@@ -229,3 +229,65 @@
 })();
 </script>
 {% endmacro %}
+
+
+{# ===============================================
+  Macro pour graphique à bulles (bubble chart)
+  =============================================== #}
+{% macro bubble_chart(chart_id, data, title="", x_title="", y_title="", size_label="") %}
+<div class="bg-gray-900 rounded-2xl shadow-lg p-6">
+    {% if title %}
+    <h3 class="text-lg font-semibold text-white mb-4">{{ title }}</h3>
+    {% endif %}
+    <div id="{{ chart_id }}" style="height: 420px;"></div>
+</div>
+
+<script>
+(function() {
+    const data = {{ data|tojson }};
+
+    const trace = {
+        x: data.x,
+        y: data.y,
+        text: data.labels || [],
+        mode: 'markers',
+        type: 'scatter',
+        marker: {
+            size: data.sizes || 10,                // Taille des bulles
+            color: data.colors || '#38bdf8',      // Couleur des bulles
+            sizemode: 'area',                     // Taille proportionnelle à l’aire
+            sizeref: 2.0 * Math.max(...(data.sizes || [20])) / (60**2),  // Ajustement auto
+            opacity: 0.7,
+            line: { width: 1, color: '#111827' }  // Bordure des bulles
+        },
+        hovertemplate:
+            '<b>%{text}</b><br>' +
+            '{{ x_title }}: %{x}<br>' +
+            '{{ y_title }}: %{y}' +
+            `{% if size_label %}<br>{{ size_label }}: %{marker.size}{% endif %}` +
+            '<extra></extra>'
+    };
+
+    const layout = {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#e5e7eb' },
+        margin: { t: 40, r: 20, b: 50, l: 50 },
+        xaxis: { 
+            gridcolor: '#374151', 
+            linecolor: '#4b5563',
+            title: { text: '{{ x_title }}', font: { color: '#e5e7eb' } }
+        },
+        yaxis: { 
+            gridcolor: '#374151', 
+            linecolor: '#4b5563',
+            title: { text: '{{ y_title }}', font: { color: '#e5e7eb' } }
+        },
+        showlegend: false
+    };
+
+    Plotly.newPlot('{{ chart_id }}', [trace], layout, { displayModeBar: false, responsive: true });
+})();
+</script>
+{% endmacro %}
+

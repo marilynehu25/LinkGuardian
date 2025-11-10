@@ -2,44 +2,44 @@
 # 📦 Librairies & dépendances Flask
 # ===============================
 from asyncio import Semaphore
+
 from aiohttp import ClientTimeout
 from celery.schedules import crontab
 from flask import Flask
-from flask_admin import Admin
 from flask_executor import Executor
 from flask_login import current_user
 from flask_migrate import Migrate
+
+from celery_app import celery
 
 # ===============================
 # ⚙️ Import interne - Base et Celery
 # ===============================
 from database import db
-from celery_app import celery
-from routes.login_manager import login_manager  # ⚠️ Doit venir avant Admin
 
 # ===============================
 # 📚 Imports modèles et vues admin
 # ===============================
 from models import (
-    User,
-    UserView,
-    AdminHomeView,  # Importé ici, après le login_manager
+    User,  # Importé ici, après le login_manager
 )
 
 # ===============================
 # 🧩 Imports des Blueprints
 # ===============================
-from routes.admin_routes import admin_routes
+
 from routes.anchors_routes import anchors_routes
 from routes.auth_routes import authentification
 from routes.backlinks_routes import backlinks_routes
 from routes.config_routes import config_bp
 from routes.domains_routes import domains_routes
+from routes.login_manager import login_manager  # ⚠️ Doit venir avant Admin
 from routes.main_routes import main_routes
 from routes.site_routes import sites_routes
 from routes.source_routes import source_routes
 from services.tag_services import tag_serv
 from services.utils_service import tag_color
+from routes.admin_routes import admin_routes
 
 # ===============================
 # ⚙️ Constantes globales
@@ -66,13 +66,14 @@ migrate = Migrate(app, db)
 login_manager.init_app(app)  # ⚠️ Obligatoire avant Admin
 executor = Executor(app)
 
+
 # ===============================
 # 🔐 Configuration Flask-Login
 # ===============================
 @login_manager.user_loader
 def load_user(user_id):
-    from models import User
     return User.query.get(int(user_id))
+
 
 # ===============================
 # ⚙️ Configuration Celery
@@ -81,6 +82,7 @@ class ContextTask(celery.Task):
     def __call__(self, *args, **kwargs):
         with app.app_context():
             return self.run(*args, **kwargs)
+
 
 celery.Task = ContextTask
 
@@ -107,6 +109,11 @@ app.register_blueprint(domains_routes)
 app.register_blueprint(tag_serv)
 app.register_blueprint(admin_routes)
 
+print("\n=== ROUTES DISPONIBLES ===")
+for rule in app.url_map.iter_rules():
+    print(f"{rule.endpoint}: {rule.rule}")
+print("========================\n")
+
 # ===============================
 # 📊 Variables globales pour templates
 # ===============================
@@ -115,7 +122,9 @@ def inject_global_stats():
     """Injecte des statistiques globales dans tous les templates"""
     if current_user.is_authenticated:
         from urllib.parse import urlparse
+
         from sqlalchemy import func
+
         from models import Website
 
         # Nombre total de backlinks
@@ -155,19 +164,6 @@ def inject_global_stats():
 
     return dict(total_backlinks=0, total_unique_anchors=0, total_unique_domains=0)
 
-# ===============================
-# 🛡️ Initialisation Flask-Admin (protégé)
-# ===============================
-admin = Admin(
-    app,
-    name="LinkGuardian - Administration",
-    index_view=AdminHomeView(url='/admin/panel'),  # ⚠️ URL changée pour éviter le conflit
-    template_mode="bootstrap4",
-    url='/admin/panel'  # ⚠️ URL de base pour Flask-Admin
-)
-
-# Ajout des vues (tables)
-admin.add_view(UserView(User, db.session))
 
 # ===============================
 # 🏁 Lancement de l'application

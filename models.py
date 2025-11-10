@@ -1,12 +1,8 @@
 # Dans models.py
 from datetime import datetime
 
-from flask import flash, redirect, url_for
-from flask_admin import AdminIndexView
-from flask_admin.contrib.sqla import ModelView
 from flask_login import (
     UserMixin,  # des fonctions interne à Flask pour la sécurisation des mots de passe (hasher les mots de passe)
-    current_user,
 )
 from sqlalchemy import UniqueConstraint
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -120,29 +116,6 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return f"<User {self.username} ({self.email})>"
-
-
-# Vue d'accueil protégée
-class AdminHomeView(AdminIndexView):
-    def is_accessible(self):
-        return current_user.is_authenticated and current_user.role == "admin"
-
-    def inaccessible_callback(self, name, **kwargs):
-        flash("Accès refusé : vous n’êtes pas administrateur.", "danger")
-        return redirect(url_for("main_routes.index"))
-
-
-# Vue modèle protégée
-class UserView(ModelView):
-    column_list = ["first_name", "last_name", "username", "role"]
-    form_columns = ["first_name", "last_name", "username", "role"]
-    column_exclude_list = ["password_hash"]
-    column_labels = {
-        "first_name": "Prénom",
-        "last_name": "Nom d’utilisateur",
-        "username": "Nom d’utilisateur",
-        "role": "Rôle",
-    }
 
 
 # Nouvelle classe pour les tags

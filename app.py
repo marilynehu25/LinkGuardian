@@ -39,7 +39,6 @@ from routes.site_routes import sites_routes
 from routes.source_routes import source_routes
 from services.tag_services import tag_serv
 from services.utils_service import tag_color
-from routes.admin_routes import admin_routes
 
 # ===============================
 # ⚙️ Constantes globales
@@ -107,7 +106,6 @@ app.register_blueprint(backlinks_routes)
 app.register_blueprint(anchors_routes)
 app.register_blueprint(domains_routes)
 app.register_blueprint(tag_serv)
-app.register_blueprint(admin_routes)
 
 print("\n=== ROUTES DISPONIBLES ===")
 for rule in app.url_map.iter_rules():

@@ -1,25 +1,18 @@
 {% extends "_layout/base.html" %}
 {% from "_layout/components.html" import content_card, status_badge, alert %}
 
-{% block title %}Paramètres - LinkGuardian{% endblock %}
+{% block title %}Configuration - LinkGuardian{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-3xl font-bold text-white">Paramètres</h1>
+            <h1 class="text-3xl font-bold text-white">Configuration</h1>
             <p class="text-gray-400 mt-1">Configurez votre compte et vos intégrations</p>
         </div>
         
         <div class="flex items-center space-x-4">
-            <button class="btn-secondary">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                Réinitialiser
-            </button>
-            
             <button class="btn-primary">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
@@ -30,28 +23,30 @@
     </div>
     
     <!-- Contenu avec navigation des onglets -->
-    <div x-data="{ activeTab: 'integrations' }">
+    <div 
+        x-data="{
+            activeTab: new URLSearchParams(window.location.search).get('tab') || 'integrations',
+            setTab(tab) {
+                this.activeTab = tab;
+                const url = new URL(window.location);
+                url.searchParams.set('tab', tab);
+                window.history.pushState({}, '', url);
+            }
+        }"
+    >
         <!-- Navigation des onglets -->
         <div class="bg-gray-900 rounded-2xl p-2 mb-6">
             <nav class="flex space-x-2">
-                <button @click="activeTab = 'integrations'" 
-                        :class="activeTab === 'integrations' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
-                        class="px-4 py-2 rounded-xl font-medium transition-all">
+                <button @click="setTab('integrations')" 
+                    :class="activeTab === 'integrations' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
+                    class="px-4 py-2 rounded-xl font-medium transition-all">
                     <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
                     </svg>
                     Intégrations
                 </button>
-                
-                <button @click="activeTab = 'preferences'" 
-                        :class="activeTab === 'preferences' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
-                        class="px-4 py-2 rounded-xl font-medium transition-all">
-                    <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
-                    </svg>
-                    Préférences
-                </button>
-                
+        
+                <!--
                 <button @click="activeTab = 'notifications'" 
                         :class="activeTab === 'notifications' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
                         class="px-4 py-2 rounded-xl font-medium transition-all">
@@ -60,15 +55,30 @@
                     </svg>
                     Notifications
                 </button>
-                
-                <button @click="activeTab = 'account'" 
+                -->
+
+                {% if current_user.role == "admin"  %}
+                    <button @click="setTab('admin')" 
+                            :class="activeTab === 'admin' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
+                            class="px-4 py-2 rounded-xl font-medium transition-all">
+
+                        <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        </svg>
+                        Administrateur
+                    </button>
+                {% endif %}
+
+                <button @click="setTab('account')" 
                         :class="activeTab === 'account' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
                         class="px-4 py-2 rounded-xl font-medium transition-all">
+
                     <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
                     Compte
                 </button>
+
             </nav>
         </div>
         <!-- Onglet Intégrations -->
@@ -161,97 +171,16 @@
             </div>
             {% endcall %}
         </div>
-        
-        <!-- Onglet Préférences -->
-        <div x-show="activeTab === 'preferences'" class="space-y-6">
-            <!-- Apparence -->
-            {% call content_card(title="Apparence") %}
-            <div class="space-y-4">
-                <div x-data="{ theme: $store.theme || 'dark' }">
-                    <label class="block text-sm font-medium text-gray-400 mb-3">Thème</label>
-                    <div class="flex space-x-4">
-                        <label class="flex items-center space-x-2 cursor-pointer">
-                            <input type="radio" 
-                                   x-model="theme" 
-                                   value="dark" 
-                                   @change="$store.theme = 'dark'; darkMode = true"
-                                   class="text-primary focus:ring-primary">
-                            <span class="text-white">Sombre</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer">
-                            <input type="radio" 
-                                   x-model="theme" 
-                                   value="light" 
-                                   @change="$store.theme = 'light'; darkMode = false"
-                                   class="text-primary focus:ring-primary">
-                            <span class="text-white">Clair</span>
-                        </label>
-                        <label class="flex items-center space-x-2 cursor-pointer">
-                            <input type="radio" 
-                                   x-model="theme" 
-                                   value="auto" 
-                                   @change="$store.theme = 'auto'; darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches"
-                                   class="text-primary focus:ring-primary">
-                            <span class="text-white">Automatique</span>
-                        </label>
-                    </div>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-400 mb-2">Langue</label>
-                    <select class="w-full max-w-xs px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                        <option value="fr" selected>Français</option>
-                        <option value="en">English</option>
-                        <option value="es">Español</option>
-                    </select>
-                </div>
+
+
+        <!-- Onglet Administrateur -->
+        {% if current_user.role == "admin"  %}
+            <div x-show="activeTab === 'admin'" class="space-y-6">
+                {% include 'settings/_table_admin.html' %}
             </div>
-            {% endcall %}
-            
-            <!-- Seuils et limites -->
-            {% call content_card(title="Seuils et limites") %}
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-400 mb-2">Seuil de sur-optimisation des ancres (%)</label>
-                    <div class="flex items-center space-x-4">
-                        <input type="range" 
-                               min="5" 
-                               max="25" 
-                               value="15" 
-                               class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
-                        <span class="text-white font-medium min-w-[3rem]">15%</span>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">Pourcentage au-delà duquel une ancre est considérée comme sur-optimisée</p>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-400 mb-2">Score de qualité minimum</label>
-                    <div class="flex items-center space-x-4">
-                        <input type="range" 
-                               min="0" 
-                               max="10" 
-                               step="0.1"
-                               value="6.0" 
-                               class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
-                        <span class="text-white font-medium min-w-[3rem]">6.0</span>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">Score minimum pour considérer un backlink comme de bonne qualité</p>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-400 mb-2">Limite d'analyse par batch</label>
-                    <select class="w-full max-w-xs px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                        <option value="100">100 URLs</option>
-                        <option value="250" selected>250 URLs</option>
-                        <option value="500">500 URLs</option>
-                        <option value="1000">1000 URLs</option>
-                    </select>
-                </div>
-            </div>
-            {% endcall %}
-        </div>
+        {% endif %}
         
-        <!-- Onglet Notifications -->
+        <!-- Onglet Notifications 
         <div x-show="activeTab === 'notifications'" class="space-y-6">
             {% call content_card(title="Notifications par email") %}
             <div class="space-y-4">
@@ -301,7 +230,8 @@
             </div>
             {% endcall %}
         </div>
-        
+        -->
+
         <!-- Onglet Compte -->
         <div x-show="activeTab === 'account'" class="space-y-6">
             {% call content_card(title="Informations du compte") %}
@@ -310,57 +240,61 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-400 mb-2">Nom</label>
                         <input type="text" 
-                               value="John Doe"
+                               value="{{ current_user.last_name }}"
+                               class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-2">Prénom</label>
+                        <input type="text" 
+                               value="{{ current_user.first_name }}"
                                class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
                     </div>
                     
-                    <div>
-                        <label class="block text-sm font-medium text-gray-400 mb-2">Email</label>
-                        <input type="email" 
-                               value="john.doe@example.com"
-                               class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
+                    
                 </div>
-                
                 <div>
-                    <label class="block text-sm font-medium text-gray-400 mb-2">Entreprise</label>
-                    <input type="text" 
-                           value="Mon Entreprise"
-                           class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Email</label>
+                    <input type="email" 
+                            value="{{ current_user.email }}"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
                 </div>
+
             </div>
             {% endcall %}
             
             {% call content_card(title="Sécurité") %}
             <div class="space-y-4">
-                <div>
-                    <h5 class="font-medium text-white mb-2">Changer le mot de passe</h5>
+                <h5 class="font-medium text-white mb-2">Changer le mot de passe</h5>
+                
+                <form method="POST" action="{{ url_for('config_routes.change_own_password') }}">
                     <div class="space-y-3">
                         <input type="password" 
-                               placeholder="Mot de passe actuel"
-                               class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
+                            name="current_password"
+                            placeholder="Mot de passe actuel"
+                            required
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
+                        
                         <input type="password" 
-                               placeholder="Nouveau mot de passe"
-                               class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
+                            name="new_password"
+                            placeholder="Nouveau mot de passe"
+                            required
+                            minlength="6"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
+                        
                         <input type="password" 
-                               placeholder="Confirmer le nouveau mot de passe"
-                               class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
+                            name="confirm_password"
+                            placeholder="Confirmer le nouveau mot de passe"
+                            required
+                            minlength="6"
+                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary">
                     </div>
-                    <button class="mt-3 w-full px-5 py-3 rounded-full bg-rose-600 hover:bg-rose-600 text-white font-semibold shadow hover:shadow-lg transition-all">
-                    💾 Sauvegarder
+                    
+                    <button type="submit" class="mt-3 w-full px-5 py-3 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow hover:shadow-lg transition-all">
+                        💾 Sauvegarder
                     </button>
+                </form>
 
-                </div>
-                
-                <!--<div class="border-t border-gray-700 pt-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="font-medium text-white">Authentification à deux facteurs</div>
-                            <div class="text-sm text-gray-400">Sécurisez votre compte avec 2FA</div>
-                        </div>
-                        <button class="btn-secondary">Configurer</button>
-                    </div>
-                </div>-->
             </div>
             {% endcall %}
         </div>

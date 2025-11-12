@@ -168,3 +168,7 @@ class Configuration(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sms_enabled = db.Column(db.Boolean, default=False)
     phone_number = db.Column(db.String(20), nullable=True)
+    babbar_api_key = db.Column(db.String(255), nullable=True)
+    serpapi_key = db.Column(db.String(255), nullable=True)
+    last_babbar_sync = db.Column(db.DateTime, nullable=True)
+    last_serpapi_sync = db.Column(db.DateTime, nullable=True)

@@ -14,6 +14,8 @@ from flask_login import current_user, login_required
 
 from database import db
 from models import Configuration, User
+import requests
+from datetime import datetime
 
 config_bp = Blueprint("config_routes", __name__)
 
@@ -337,3 +339,187 @@ def change_own_password():
         flash(f"Erreur lors du changement de mot de passe : {str(e)}", "error")
 
     return redirect(url_for("config_routes.configuration"))
+
+
+@config_bp.route("/configuration/edit-information", methods=["POST"])
+@login_required
+def edit_own_information():
+    """Permet à l'utilisateur connecté de modifier ses propres informations"""
+    try:
+        # Récupérer les données du formulaire
+        first_name = request.form.get("first_name")
+        last_name = request.form.get("last_name")
+        email = request.form.get("email")
+
+        # Vérification des champs requis
+        if not first_name or not last_name or not email:
+            flash("Tous les champs sont requis.", "error")
+            return redirect(url_for("config_routes.configuration"))
+
+        # Vérifier si l'email est déjà utilisé par un autre utilisateur
+        existing_email = User.query.filter_by(email=email).first()
+        if existing_email and existing_email.id != current_user.id:
+            flash("Cette adresse email est déjà utilisée par un autre compte.", "error")
+            return redirect(url_for("config_routes.configuration"))
+
+        # Mettre à jour les informations
+        current_user.first_name = first_name
+        current_user.last_name = last_name
+        current_user.email = email
+
+        db.session.commit()
+
+        flash("Vos informations ont été mises à jour avec succès.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Erreur lors de la mise à jour de vos informations : {str(e)}", "error")
+
+    return redirect(url_for("config_routes.configuration"))
+
+
+# ============================================================
+# 🔗 TESTER LA CLÉ BABBAR
+# ============================================================
+@config_bp.route("/configuration/integrations/test-babbar", methods=["POST"])
+@login_required
+def test_babbar_api():
+    """Tester la validité de la clé API Babbar"""
+    api_key = request.form.get("babbar_api_key")
+
+    if not api_key:
+        return jsonify({"success": False, "message": "Aucune clé API fournie."}), 400
+
+    # Exemple d'URL à tester
+    api_url = "https://www.babbar.tech/api/url/overview/main"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    payload = {"url": "https://www.example.com/"}
+
+    try:
+        response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            return jsonify({"success": True, "message": "Connexion réussie à Babbar."})
+        else:
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"Erreur {response.status_code} : {response.text}",
+                }
+            )
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ============================================================
+# 💾 SAUVEGARDER LA CLÉ BABBAR
+# ============================================================
+@config_bp.route("/configuration/integrations/save-babbar", methods=["POST"])
+@login_required
+def save_babbar_api_key():
+    """Sauvegarde la clé API Babbar dans la base"""
+    api_key = request.form.get("babbar_api_key")
+
+    if not api_key:
+        flash("Veuillez entrer une clé API valide.", "error")
+        return redirect(url_for("config_routes.configuration", tab="integrations"))
+
+    try:
+        config = Configuration.query.first()
+        # Valeurs par défaut si la table Configuration est vide
+        if not config:
+            config = Configuration(
+                babbar_api_key="lrU6gM7ev17v45DTS45dqznlEVvoapsNIotq5aQMeusGOtemdrWlqcpkIIMv",
+                serpapi_key="2d616e924f3b0d90bdcecdae5de3ab32605022360f9598b9c6d25e5a0ed80db5",
+                last_babbar_sync=None,
+                last_serpapi_sync=None,
+            )
+            db.session.add(config)
+            db.session.commit()
+
+
+        config.babbar_api_key = api_key
+        config.last_babbar_sync = datetime.now()
+
+        db.session.commit()
+        flash("Clé API Babbar enregistrée avec succès.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Erreur lors de la sauvegarde de la clé API Babbar : {str(e)}", "error")
+
+    return redirect(url_for("config_routes.configuration", tab="integrations"))
+
+
+# ============================================================
+# 🔍 TESTER LA CLÉ SERPAPI
+# ============================================================
+@config_bp.route("/configuration/integrations/test-serpapi", methods=["POST"])
+@login_required
+def test_serpapi_api():
+    """Tester la validité de la clé API SerpApi"""
+    api_key = request.form.get("serpapi_key")
+
+    if not api_key:
+        return jsonify({"success": False, "message": "Aucune clé API fournie."}), 400
+
+    # Exemple de requête simple à SerpApi
+    test_url = "https://serpapi.com/search.json"
+    params = {
+        "engine": "google",
+        "q": "site:example.com",
+        "api_key": api_key,
+    }
+
+    try:
+        response = requests.get(test_url, params=params, timeout=10)
+
+        if response.status_code == 200:
+            return jsonify({"success": True, "message": "Connexion réussie à SerpApi."})
+        else:
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"Erreur {response.status_code} : {response.text}",
+                }
+            )
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ============================================================
+# 💾 SAUVEGARDER LA CLÉ SERPAPI
+# ============================================================
+@config_bp.route("/configuration/integrations/save-serpapi", methods=["POST"])
+@login_required
+def save_serpapi_api_key():
+    """Sauvegarde la clé API SerpApi dans la base"""
+    api_key = request.form.get("serpapi_key")
+
+    if not api_key:
+        flash("Veuillez entrer une clé API valide.", "error")
+        return redirect(url_for("config_routes.configuration", tab="integrations"))
+
+    try:
+        config = Configuration.query.first()
+        if not config:
+            config = Configuration()
+            db.session.add(config)
+
+        config.serpapi_key = api_key
+        config.last_serpapi_sync = datetime.now()
+
+        db.session.commit()
+        flash("Clé API SerpApi enregistrée avec succès.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Erreur lors de la sauvegarde de la clé API SerpApi : {str(e)}", "error")
+
+    return redirect(url_for("config_routes.configuration", tab="integrations"))
+

@@ -1,59 +1,57 @@
 <!-- Onglet Administrateur -->
 <div x-show="activeTab === 'admin'" class="space-y-6">
-    <!-- En-tête avec bouton d'ajout -->
-    <div class="flex items-center justify-between bg-gray-900 rounded-2xl p-6">
-        <button onclick="openAddUserModal()" class="btn-primary">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Nouvel utilisateur
-        </button>
-    </div>
 
-    <!-- Statistiques rapides -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-gray-900 rounded-2xl p-6">
+    <!-- Statistiques rapides (version compacte) -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <!-- Total utilisateurs -->
+        <div class="bg-gray-900 rounded-xl p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-400 text-sm">Total utilisateurs</p>
-                    <p class="text-3xl font-bold text-white mt-2">{{ total_users }}</p>
+                    <p class="text-gray-400 text-xs uppercase tracking-wide">Total</p>
+                    <p class="text-xl font-semibold text-white">{{ total_users }}</p>
                 </div>
-                <div class="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center">
-                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                <div class="w-9 h-9 bg-primary/20 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                     </svg>
                 </div>
             </div>
         </div>
 
-        <div class="bg-gray-900 rounded-2xl p-6">
+        <!-- Administrateurs -->
+        <div class="bg-gray-900 rounded-xl p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-400 text-sm">Administrateurs</p>
-                    <p class="text-3xl font-bold text-white mt-2">{{ total_admins }}</p>
+                    <p class="text-gray-400 text-xs uppercase tracking-wide">Admins</p>
+                    <p class="text-xl font-semibold text-white">{{ total_admins }}</p>
                 </div>
-                <div class="w-12 h-12 bg-warn/20 rounded-xl flex items-center justify-center">
-                    <svg class="w-6 h-6 text-warn" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                <div class="w-9 h-9 bg-warn/20 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-warn" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
                 </div>
             </div>
         </div>
 
-        <div class="bg-gray-900 rounded-2xl p-6">
+        <!-- Utilisateurs standards -->
+        <div class="bg-gray-900 rounded-xl p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-400 text-sm">Utilisateurs standards</p>
-                    <p class="text-3xl font-bold text-white mt-2">{{ total_users - total_admins }}</p>
+                    <p class="text-gray-400 text-xs uppercase tracking-wide">Standards</p>
+                    <p class="text-xl font-semibold text-white">{{ total_users - total_admins }}</p>
                 </div>
-                <div class="w-12 h-12 bg-success/20 rounded-xl flex items-center justify-center">
-                    <svg class="w-6 h-6 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                <div class="w-9 h-9 bg-success/20 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                     </svg>
                 </div>
             </div>
         </div>
     </div>
+
 
     <!-- Barre de recherche + filtre 
     <div class="bg-gray-900 rounded-2xl p-6">
@@ -88,6 +86,14 @@
     -->
     
     <!-- Tableau des utilisateurs -->
+    <button onclick="openAddUserModal()"
+        class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/20 hover:bg-primary/30 text-primary text-sm font-medium transition-all">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Nouvel utilisateur
+    </button>
+
     <div class="bg-gray-900 rounded-2xl overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -123,6 +129,9 @@
                                 <div class="ml-4">
                                     <div class="text-sm font-medium text-white">
                                         {{ user.first_name }} {{ user.last_name }}
+                                        {% if current_user.id == user.id %}
+                                         (moi)
+                                        {% endif %}
                                     </div>
                                     <div class="text-sm text-gray-400">
                                         @{{ user.username }}
@@ -180,14 +189,14 @@
                                 </button>
 
                     
-                                    <button onclick="changePassword({{ user.id }})" 
-                                            class="text-warn hover:text-warn/80 transition-colors p-2 rounded-lg hover:bg-gray-700"
-                                            title="Changer le mot de passe">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-                                        </svg>
-                                    </button>
+                                <button onclick="changePassword({{ user.id }})" 
+                                        class="text-warn hover:text-warn/80 transition-colors p-2 rounded-lg hover:bg-gray-700"
+                                        title="Changer le mot de passe">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                                    </svg>
+                                </button>
 
                                 
                                 <button onclick="deleteUser({{ user.id }}, '{{ user.first_name }} {{ user.last_name }}')" 

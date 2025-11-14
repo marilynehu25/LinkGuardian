@@ -4,13 +4,10 @@
 from asyncio import Semaphore
 
 from aiohttp import ClientTimeout
-from celery.schedules import crontab
 from flask import Flask
 from flask_executor import Executor
 from flask_login import current_user
 from flask_migrate import Migrate
-
-from celery_app import celery
 
 # ===============================
 # ⚙️ Import interne - Base et Celery
@@ -27,7 +24,6 @@ from models import (
 # ===============================
 # 🧩 Imports des Blueprints
 # ===============================
-
 from routes.anchors_routes import anchors_routes
 from routes.auth_routes import authentification
 from routes.backlinks_routes import backlinks_routes
@@ -65,32 +61,20 @@ migrate = Migrate(app, db)
 login_manager.init_app(app)  # ⚠️ Obligatoire avant Admin
 executor = Executor(app)
 
+with app.app_context():
+    admin_user = User.query.get(1)
+    if admin_user and admin_user.role != "admin":
+        admin_user.role = "admin"
+        db.session.commit()
+        print(f"✅ Utilisateur {admin_user.username} défini comme administrateur.")
 
 # ===============================
 # 🔐 Configuration Flask-Login
 # ===============================
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, user_id)
 
-
-# ===============================
-# ⚙️ Configuration Celery
-# ===============================
-class ContextTask(celery.Task):
-    def __call__(self, *args, **kwargs):
-        with app.app_context():
-            return self.run(*args, **kwargs)
-
-
-celery.Task = ContextTask
-
-celery.conf.beat_schedule = {
-    "check-all-sites-weekly": {
-        "task": "tasks.check_all_sites_weekly",
-        "schedule": crontab(day_of_week="monday", hour=2, minute=0),
-    },
-}
 
 # ===============================
 # 🧩 Filtres et Blueprints
@@ -111,6 +95,7 @@ print("\n=== ROUTES DISPONIBLES ===")
 for rule in app.url_map.iter_rules():
     print(f"{rule.endpoint}: {rule.rule}")
 print("========================\n")
+
 
 # ===============================
 # 📊 Variables globales pour templates

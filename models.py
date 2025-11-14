@@ -12,7 +12,7 @@ from database import db
 
 class Website(db.Model):
     __table_args__ = (
-        UniqueConstraint("url", "link_to_check", name="uix_url_linktocheck"),
+        UniqueConstraint("url", "link_to_check", "user_id", name="uix_url_linktocheck"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -117,6 +117,31 @@ class User(UserMixin, db.Model):
     def __repr__(self):
         return f"<User {self.username} ({self.email})>"
 
+class UserAccess(db.Model):
+    """
+    Table permettant de gérer les droits de partage entre utilisateurs.
+    - owner_id : l'utilisateur dont les données sont partagées
+    - grantee_id : l'utilisateur autorisé à consulter les données
+    - granted_by : l'admin qui a accordé le droit (facultatif)
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    grantee_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    granted_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    # Relations pratiques
+    owner = db.relationship("User", foreign_keys=[owner_id], backref="shared_with")
+    grantee = db.relationship("User", foreign_keys=[grantee_id], backref="access_to")
+    admin = db.relationship("User", foreign_keys=[granted_by])
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", "grantee_id", name="uix_owner_grantee"),
+    )
+
+    def __repr__(self):
+        return f"<UserAccess owner={self.owner_id} → grantee={self.grantee_id}>"
+
 
 # Nouvelle classe pour les tags
 class Tag(db.Model):
@@ -172,3 +197,5 @@ class Configuration(db.Model):
     serpapi_key = db.Column(db.String(255), nullable=True)
     last_babbar_sync = db.Column(db.DateTime, nullable=True)
     last_serpapi_sync = db.Column(db.DateTime, nullable=True)
+
+

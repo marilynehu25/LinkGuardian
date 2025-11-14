@@ -15,27 +15,30 @@ from flask import (
     request,
     send_file,
     url_for,
+    abort ,
 )
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from redis import Redis
-from redis.lock import Lock
 from sqlalchemy import and_
-
+from sqlalchemy.orm import joinedload
+from services.access_service import user_can_access_data
+from flask import request, abort
+from math import ceil
 # à partir du fichier python database.py
 from database import db
-from models import Source, Website, db
+from models import Source, Website, User, UserAccess
 from services.api_babbar import fetch_url_data
-from services.stats_service import save_stats_snapshot
 from services.check_service import (
     check_link_presence_and_follow_status,
     perform_check_status,
 )
+from services.stats_service import save_stats_snapshot
 from services.utils_service import check_anchor_presence
-from tasks import check_all_user_sites, check_single_site
 
-r = Redis.from_url("redis://localhost:6379/0")
+
+# ✅ SUPPRIMÉ : Plus besoin de Redis avec RabbitMQ
+# r = Redis.from_url("redis://localhost:6379/0")
 
 sites_routes = Blueprint("sites_routes", __name__)
 
@@ -199,6 +202,9 @@ def delete_site(site_id):
     if not site_to_delete:
         print("❌ Site non trouvé :", site_id)
         return "Site non trouvé", 404
+    
+    if not user_can_access_data(current_user.id, site_to_delete.user_id):
+       abort(403)
 
     try:
         print(f"🗑️ Suppression du site ID {site_id} → {site_to_delete.url}")
@@ -229,31 +235,15 @@ def delete_site(site_id):
         return "Erreur lors de la suppression", 500
 
 
-# cette fonction sert à Supprimer tous les sites de la base de données
-@sites_routes.route("/delete_all_sites", methods=["POST"])
-def delete_all_sites():
-    # 🔧 AUTOMATIQUE : Nettoyer Celery avant de supprimer les sites
-    try:
-        from celery_app import celery
-
-        celery.control.purge()  # Vide toutes les tâches en attente
-        print("✅ Tâches Celery purgées automatiquement")
-    except Exception as e:
-        print(f"⚠️ Impossible de purger Celery: {e}")
-
-    # Suppression des sites
-    Website.query.delete()
-    db.session.commit()
-    flash("✅ Tous les sites ont été supprimés avec succès.", "success")
-    return redirect(url_for("backlinks_routes.backlinks_list"))
-
-
 # Une fonction est conçue pour déclencher la vérification du statut du lien et du texte d'ancre, ainsi que la mise à jour des données Babbar pour un site spécifié.
 # Après avoir effectué ces opérations, elle sauvegarde les changements dans la base de données et redirige l'utilisateur vers la page d'accueil.
 @sites_routes.route("/check_status/<int:site_id>", methods=["GET", "POST"])
 def check_status(site_id):
     """Vérifie et met à jour le statut d'un site"""
     site = Website.query.get_or_404(site_id)
+
+    if not user_can_access_data(current_user.id, site.user_id):
+        abort(403)
 
     try:
         # Effectuer les vérifications et mises à jour
@@ -287,56 +277,66 @@ def check_status(site_id):
         return redirect(url_for("main_routes.index"))
 
 
-# conçue pour être déclenchée via une requête POST sur la route /check_all_sites. Elle envoie des messages à une file d'attente RabbitMQ,
-# chaque message contenant les détails d'un site, afin d'initier la vérification de tous les sites enregistrés dans la base de données.
-# Route pour vérifier tous les sites
-if False:
+# cette fonction sert à Supprimer tous les sites de la base de données
+@sites_routes.route("/delete_all_sites", methods=["POST"])
+def delete_all_sites():
+    # 🔧 AUTOMATIQUE : Nettoyer Celery avant de supprimer les sites
+    try:
+        from celery_app import celery
 
-    @sites_routes.route("/check_all_sites", methods=["POST"])
-    @login_required
-    def check_all_sites():
-        """Vérifie tous les sites via Celery"""
+        celery.control.purge()  # Vide toutes les tâches en attente
+        print("✅ Tâches Celery purgées automatiquement")
+    except Exception as e:
+        print(f"⚠️ Impossible de purger Celery: {e}")
 
-        # Lancer la tâche Celery
-        task = check_all_user_sites.delay(current_user.id)
-
-        sites_count = Website.query.filter_by(user_id=current_user.id).count()
-
-        flash(
-            f"🔄 Vérification de {sites_count} sites lancée en arrière-plan ! "
-            f"(Task ID: {task.id})",
-            "info",
-        )
-        return redirect(url_for("backlinks_routes.backlinks_list"))
+    # Suppression des sites
+    Website.query.delete()
+    db.session.commit()
+    flash("✅ Tous les sites ont été supprimés avec succès.", "success")
+    return redirect(url_for("backlinks_routes.backlinks_list"))
 
 
+# Route pour forcer la vérification manuelle de TOUS les sites de l'utilisateur
 @sites_routes.route("/check_all_sites", methods=["POST"])
 @login_required
 def check_all_sites():
-    """Vérifie tous les sites via Celery, avec un verrou pour éviter les doublons."""
-    lock = Lock(r, f"check_all_sites_lock_{current_user.id}", timeout=60)
-
-    # Essaye d'acquérir le verrou (ne bloque pas si déjà verrouillé)
-    if lock.acquire(blocking=False):
-        try:
-            # Lancer la tâche Celery
-            task = check_all_user_sites.delay(current_user.id)
-            sites_count = Website.query.filter_by(user_id=current_user.id).count()
-            flash(
-                f"🔄 Vérification de {sites_count} sites lancée en arrière-plan ! "
-                f"(Task ID: {task.id})",
-                "info",
-            )
-        finally:
-            # Libère le verrou dans tous les cas
-            lock.release()
-    else:
-        flash(
-            "⚠️ Une vérification est déjà en cours pour vos sites. "
-            "Veuillez patienter avant de relancer.",
-            "warning",
-        )
-
+    """Version avec debug pour identifier le problème"""
+    
+    print("=" * 60)
+    print("🔍 [DEBUG] check_all_sites() appelée")
+    print(f"🔍 [DEBUG] User ID: {current_user.id}")
+    print(f"🔍 [DEBUG] Request method: {request.method}")
+    print(f"🔍 [DEBUG] Headers: {dict(request.headers)}")
+    print("=" * 60)
+    
+    try:
+        print("🔍 [DEBUG] Tentative d'import de check_all_user_sites...")
+        from tasks import check_all_user_sites
+        print("✅ [DEBUG] Import réussi")
+        
+        print("🔍 [DEBUG] Tentative de lancement de la tâche...")
+        result = check_all_user_sites.delay(current_user.id)
+        print(f"✅ [DEBUG] Tâche lancée avec ID: {result.id}")
+        
+        flash("🚀 Vérification globale lancée en arrière-plan !", "success")
+        
+    except ImportError as e:
+        print(f"❌ [DEBUG] Erreur d'import: {e}")
+        flash(f"❌ Erreur d'import : {e}", "danger")
+        
+    except AttributeError as e:
+        print(f"❌ [DEBUG] Erreur d'attribut: {e}")
+        flash(f"❌ Erreur : {e}", "danger")
+        
+    except Exception as e:
+        print(f"❌ [DEBUG] Erreur générale: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        flash(f"❌ Erreur : {e}", "danger")
+    
+    print("🔍 [DEBUG] Fin de la fonction, redirection...")
+    print("=" * 60)
+    
     return redirect(url_for("backlinks_routes.backlinks_list"))
 
 
@@ -411,6 +411,7 @@ def import_data():
                     f"🚀 Lancement de la vérification de {len(websites_to_check)} sites..."
                 )
                 for website in websites_to_check:
+                    from tasks import check_single_site
                     check_single_site.delay(website.id)
                     print(f"  ✓ Tâche lancée pour {website.url}")
 
@@ -486,12 +487,19 @@ def import_data():
         sources=sources,
     )
 
-
 # bouton pour exporter les données en CSV
 @sites_routes.route("/export_data", methods=["GET"])
 @login_required
 def export_data():
     """Exporte la liste des sites en Excel"""
+
+    # 🔒 Étape 1 : Récupérer user_id depuis l'URL et déterminer pour quel utilisateur on exporte
+    user_id = request.args.get("user_id", type=int)
+    target_user_id = user_id or current_user.id
+
+    # 🔒 Étape 2 : Vérifier le droit d'accès
+    if not user_can_access_data(current_user.id, target_user_id):
+        abort(403)
 
     # Créer un workbook Excel
     wb = Workbook()
@@ -530,8 +538,8 @@ def export_data():
         cell.font = header_font
         cell.alignment = Alignment(wrap_text=True, vertical="top")
 
-    # Récupération des données
-    websites = Website.query.filter_by(user_id=current_user.id).all()
+    # ✅ Étape 3 : Récupération sécurisée des données
+    websites = Website.query.filter_by(user_id=target_user_id).all()
 
     # Ajouter les données
     for site in websites:
@@ -558,7 +566,7 @@ def export_data():
     ws.column_dimensions["A"].width = 50  # URL
     ws.column_dimensions["B"].width = 15  # Tag
     ws.column_dimensions["C"].width = 15  # Plateforme source
-    ws.column_dimensions["D"].width = 50  # Lien  a verifier
+    ws.column_dimensions["D"].width = 50  # Lien à vérifier
     ws.column_dimensions["E"].width = 30  # Texte d'ancre
 
     # Sauvegarder dans un buffer
@@ -575,3 +583,67 @@ def export_data():
         as_attachment=True,
         download_name=filename,
     )
+
+
+@sites_routes.route("/shared_data", methods=["GET"])
+@login_required
+def shared_data():
+    """
+    Page permettant de consulter les données partagées par d'autres utilisateurs.
+    L'utilisateur peut sélectionner un propriétaire (owner) parmi ceux qui lui ont donné accès.
+    """
+
+    # Étape 1 : récupérer tous les utilisateurs qui m'ont partagé leurs données
+    shared_with_me = (
+        UserAccess.query
+        .options(joinedload(UserAccess.owner))
+        .filter_by(grantee_id=current_user.id)
+        .all()
+    )
+
+    # Étape 2 : récupérer éventuellement l’utilisateur sélectionné
+    selected_owner_id = request.args.get("owner_id", type=int)
+    backlinks = []
+    selected_owner = None
+    current_page = 1
+    total_pages = 1
+    sort = "created"
+    order = "desc"
+
+    if selected_owner_id:
+        selected_owner = User.query.get(selected_owner_id)
+        if not selected_owner:
+            abort(404)
+
+        # Vérifier le droit d’accès
+        if not user_can_access_data(current_user.id, selected_owner.id):
+            abort(403)
+
+        # 🔹 Pagination simple (10 par page)
+        per_page = 10
+        page = request.args.get("page", 1, type=int)
+
+        query = Website.query.filter_by(user_id=selected_owner.id).order_by(Website.last_checked.desc())
+        total_items = query.count()
+        total_pages = ceil(total_items / per_page) if total_items > 0 else 1
+
+        backlinks = (
+            query.offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+        current_page = page
+
+    return render_template(
+        "shared/shared_data.html",
+        shared_with_me=shared_with_me,
+        selected_owner=selected_owner,
+        backlinks=backlinks,
+        current_page=current_page,
+        total_pages=total_pages,
+        sort=sort,
+        order=order,
+        # ✅ Base de pagination propre à cette page
+        pagination_base_url=url_for("sites_routes.shared_data"),
+    )
+

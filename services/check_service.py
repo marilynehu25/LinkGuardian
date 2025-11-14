@@ -121,7 +121,9 @@ def check_link_presence_and_follow_status(html_content, link_to_check):
 
 # la fonction permet de vérifier de manière asynchrone si un lien spécifié est présent dans le contenu HTML d'une page
 # et fournit également le statut de suivi de ce lien (suivi ou non-suivi).
-async def check_link_presence_and_follow_status_async(session, url, link_to_check, anchor_text):
+async def check_link_presence_and_follow_status_async(
+    session, url, link_to_check, anchor_text
+):
     try:
         async with session.get(url, allow_redirects=True) as response:
             status_code = response.status  # ✅ Ajout ici

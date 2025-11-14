@@ -16,6 +16,8 @@ from database import db
 from models import Configuration, User
 import requests
 from datetime import datetime
+from sqlalchemy.orm import joinedload
+from models import UserAccess
 
 config_bp = Blueprint("config_routes", __name__)
 
@@ -41,7 +43,7 @@ def admin_required(f):
 @config_bp.route("/configuration", methods=["GET", "POST"])
 @login_required
 def configuration():
-    """Page principale de configuration"""
+    """Page principale de configuration (tous les onglets inclus : profil, partages, intégrations, etc.)"""
     if request.method == "POST":
         sms_enabled = request.form.get("sms_enabled") == "on"
         phone_number = request.form.get("phone_number")
@@ -57,19 +59,48 @@ def configuration():
         flash("Configuration sauvegardée avec succès.")
         return redirect(url_for("config_routes.configuration"))
 
-    # Récupérer les utilisateurs (pour l’onglet admin)
+    # ==============================
+    # 🧩 Données de base
+    # ==============================
+    config = Configuration.query.first()
     users = User.query.all()
     total_users = len(users)
     total_admins = len([u for u in users if u.role == "admin"])
-    config = Configuration.query.first()
 
+    # ==============================
+    # 👥 Données de partage
+    # ==============================
+    from models import UserAccess
+    from sqlalchemy.orm import joinedload
+
+    if current_user.role == "admin":
+        shares = (
+            UserAccess.query
+            .options(joinedload(UserAccess.owner), joinedload(UserAccess.grantee))
+            .order_by(UserAccess.created_at.desc())
+            .all()
+        )
+    else:
+        shares = (
+            UserAccess.query
+            .options(joinedload(UserAccess.owner), joinedload(UserAccess.grantee))
+            .filter_by(owner_id=current_user.id)
+            .order_by(UserAccess.created_at.desc())
+            .all()
+        )
+
+    # ==============================
+    # 🧭 Rendu global
+    # ==============================
     return render_template(
         "settings/index.html",
         config=config,
         total_users=total_users,
         total_admins=total_admins,
         users=users,
+        shares=shares,   # 👈 inclus maintenant dans le rendu principal
     )
+
 
 
 # ============================================================
@@ -301,14 +332,14 @@ def change_own_password():
         # Validation : vérifier que tous les champs sont remplis
         if not current_password or not new_password or not confirm_password:
             flash("Tous les champs sont requis.", "error")
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Validation : vérifier que le nouveau mot de passe a au moins 6 caractères
         if len(new_password) < 6:
             flash(
                 "Le nouveau mot de passe doit contenir au moins 6 caractères.", "error"
             )
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Validation : vérifier que le nouveau mot de passe et la confirmation correspondent
         if new_password != confirm_password:
@@ -316,17 +347,17 @@ def change_own_password():
                 "Le nouveau mot de passe et la confirmation ne correspondent pas.",
                 "error",
             )
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Vérifier que le mot de passe actuel est correct
         if not current_user.check_password(current_password):
             flash("Le mot de passe actuel est incorrect.", "error")
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Empêcher l'utilisateur de réutiliser le même mot de passe
         if current_user.check_password(new_password):
             flash("Le nouveau mot de passe doit être différent de l'ancien.", "error")
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Changer le mot de passe
         current_user.set_password(new_password)
@@ -338,7 +369,7 @@ def change_own_password():
         db.session.rollback()
         flash(f"Erreur lors du changement de mot de passe : {str(e)}", "error")
 
-    return redirect(url_for("config_routes.configuration"))
+    return redirect(url_for("config_routes.configuration", tab="account"))
 
 
 @config_bp.route("/configuration/edit-information", methods=["POST"])
@@ -354,13 +385,13 @@ def edit_own_information():
         # Vérification des champs requis
         if not first_name or not last_name or not email:
             flash("Tous les champs sont requis.", "error")
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Vérifier si l'email est déjà utilisé par un autre utilisateur
         existing_email = User.query.filter_by(email=email).first()
         if existing_email and existing_email.id != current_user.id:
             flash("Cette adresse email est déjà utilisée par un autre compte.", "error")
-            return redirect(url_for("config_routes.configuration"))
+            return redirect(url_for("config_routes.configuration", tab="account"))
 
         # Mettre à jour les informations
         current_user.first_name = first_name
@@ -375,7 +406,7 @@ def edit_own_information():
         db.session.rollback()
         flash(f"Erreur lors de la mise à jour de vos informations : {str(e)}", "error")
 
-    return redirect(url_for("config_routes.configuration"))
+    return redirect(url_for("config_routes.configuration", tab="account"))
 
 
 # ============================================================
@@ -522,4 +553,73 @@ def save_serpapi_api_key():
         flash(f"Erreur lors de la sauvegarde de la clé API SerpApi : {str(e)}", "error")
 
     return redirect(url_for("config_routes.configuration", tab="integrations"))
+
+
+
+# ============================================================
+# 👥 GESTION DES DROITS DE PARTAGE ENTRE UTILISATEURS
+# ============================================================
+
+@config_bp.route("/configuration/partage/add", methods=["POST"])
+@login_required
+def add_share():
+    """
+    Ajoute un droit de partage :
+    - Admin → peut définir n’importe quel owner_id et grantee_id
+    - Utilisateur → ne peut partager que ses propres données
+    """
+    owner_id = request.form.get("owner_id")
+    grantee_id = request.form.get("grantee_id")
+
+    # Validation des champs
+    if not owner_id or not grantee_id:
+        flash("Veuillez sélectionner les deux utilisateurs.", "error")
+        return redirect(url_for("config_routes.configuration", tab="sharing"))
+
+    # Vérifier les droits
+    if current_user.role != "admin":
+        # Un utilisateur normal ne peut partager que ses propres données
+        owner_id = current_user.id
+
+    if int(owner_id) == int(grantee_id):
+        flash("Un utilisateur ne peut pas se partager ses propres données.", "error")
+        return redirect(url_for("config_routes.configuration", tab="sharing"))
+
+    # Vérifier si ce partage existe déjà
+    existing = UserAccess.query.filter_by(owner_id=owner_id, grantee_id=grantee_id).first()
+    if existing:
+        flash("Ce partage existe déjà.", "info")
+        return redirect(url_for("config_routes.configuration", tab="sharing"))
+
+    # Créer le partage
+    new_share = UserAccess(
+        owner_id=owner_id,
+        grantee_id=grantee_id,
+        granted_by=current_user.id
+    )
+    db.session.add(new_share)
+    db.session.commit()
+
+    flash("Droit de partage ajouté avec succès ✅", "success")
+    return redirect(url_for("config_routes.configuration", tab="sharing"))
+
+
+@config_bp.route("/configuration/partage/delete/<int:share_id>", methods=["POST"])
+@login_required
+def delete_share(share_id):
+    """
+    Supprimer un droit de partage :
+    - Admin → peut tout supprimer
+    - Utilisateur → ne peut supprimer que ses propres partages
+    """
+    share = UserAccess.query.get_or_404(share_id)
+
+    if current_user.role != "admin" and share.owner_id != current_user.id:
+        abort(403)
+
+    db.session.delete(share)
+    db.session.commit()
+
+    flash("Droit de partage supprimé ✅", "success")
+    return redirect(url_for("config_routes.configuration", tab="sharing"))
 

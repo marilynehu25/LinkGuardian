@@ -6,7 +6,7 @@
         <!-- Pagination -->
     {% if total_pages > 1 %}
     <div class="px-6 py-4 border-t border-gray-700">
-        {{ pagination(current_page, total_pages, "/backlinks/partial/table", "backlinks-table") }}
+        {{ pagination(current_page, total_pages, pagination_base_url, "backlinks-table", owner_id=selected_owner.id if selected_owner else None) }}
     </div>
     {% endif %}
     

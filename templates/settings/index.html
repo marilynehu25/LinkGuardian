@@ -58,7 +58,18 @@
                         </svg>
                         Administrateur
                     </button>
+
                 {% endif %}
+
+                <button @click="setTab('sharing')" 
+                        :class="activeTab === 'sharing' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
+                        class="px-4 py-2 rounded-xl font-medium transition-all">
+                    <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 8h10M7 12h4m1 8a9 9 0 100-18 9 9 0 000 18z"/>
+                    </svg>
+                    Partage
+                </button>
 
                 <button @click="setTab('account')" 
                         :class="activeTab === 'account' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
@@ -278,6 +289,12 @@
             {% endcall %}
         </div>
         -->
+
+        <!-- Onglet Partage -->
+        <div x-show="activeTab === 'sharing'" class="space-y-6">
+            {% include 'settings/_table_sharing.html' %}
+        </div>
+
 
         <!-- Onglet Compte -->
         <div x-show="activeTab === 'account'" class="space-y-6">

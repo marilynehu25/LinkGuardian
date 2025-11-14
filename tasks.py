@@ -27,11 +27,20 @@ class APIRateLimitError(Exception):
         )
 
 
-async def process_site_async(site):
-    """Traite la vérification d'un site de manière asynchrone"""
+async def process_site_async(site_id):
+    """Traite la vérification d'un site de manière asynchrone
+    
+    ⚠️ Cette fonction doit être appelée depuis un contexte Flask (tâche Celery)
+    pour avoir accès à db.session
+    """
     # Importer ici pour éviter les imports circulaires
     from services.api_serpapi import check_google_indexation
     from services.check_service import check_link_presence_and_follow_status_async
+
+    # Récupérer le site depuis la DB (dans le contexte Flask de la tâche)
+    site = Website.query.get(site_id)
+    if not site:
+        return {"success": False, "site_id": site_id, "error": "Site non trouvé"}
 
     async with ClientSession() as session:
         try:
@@ -141,7 +150,7 @@ def check_single_site(self, site_id):
             return {"success": True, "skipped": True, "site_id": site_id}
 
         # Exécuter la vérification
-        result = asyncio.run(process_site_async(site))
+        result = asyncio.run(process_site_async(site_id))
         print(f"✅ Site {site_id} vérifié avec succès")
         return result
 
@@ -203,6 +212,7 @@ def check_all_user_sites(user_id):
     )
 
     from services.stats_service import save_stats_snapshot
+
     save_stats_snapshot(user_id)
 
     return {

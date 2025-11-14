@@ -1,6 +1,6 @@
 # routes/backlinks_routes.py
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -125,6 +125,7 @@ def backlinks_list():
         filters=filters,
         tags=tags,
         sources=sources,
+        pagination_base_url=url_for("backlinks_routes.backlinks_list"),  # ✅ Ajout clé
     )
 
 @backlinks_routes.route("/backlinks/partial/table")

@@ -1,0 +1,53 @@
+{% extends "_layout/base.html" %}
+{% from "_layout/components.html" import pagination %}
+
+{% block content %}
+<div class="space-y-8">
+
+    <h1 class="text-3xl font-bold text-white mb-6">📂 Données partagées</h1>
+
+    <!-- Sélecteur d'utilisateur -->
+    <form method="GET" action="{{ url_for('sites_routes.shared_data') }}" class="flex flex-col md:flex-row gap-4">
+        <select name="owner_id"
+                class="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-primary">
+            <option value="">Sélectionnez un utilisateur...</option>
+            {% for share in shared_with_me %}
+                <option value="{{ share.owner.id }}"
+                        {% if selected_owner and share.owner.id == selected_owner.id %}selected{% endif %}>
+                    {{ share.owner.first_name }} {{ share.owner.last_name }}
+                </option>
+            {% endfor %}
+        </select>
+        <button type="submit"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-all">
+            Voir les données
+        </button>
+    </form>
+
+    {% if selected_owner %}
+        <div class="mt-8">
+
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-white">
+                    Données partagées par {{ selected_owner.first_name }} {{ selected_owner.last_name }}
+                </h2>
+
+                <a href="{{ url_for('sites_routes.export_data', user_id=selected_owner.id) }}"
+                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-all">
+                    Exporter les données
+                </a>
+            </div>
+
+            {% if backlinks %}
+                {% include "backlinks/_table.html" with context %}
+            {% else %}
+                <p class="text-gray-400 italic">Aucune donnée trouvée pour cet utilisateur.</p>
+            {% endif %}
+        </div>
+
+    {% else %}
+        <div class="text-gray-500 italic mt-4">Sélectionnez un utilisateur pour voir ses données.</div>
+    {% endif %}
+
+</div>
+{% endblock %}

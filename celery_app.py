@@ -1,39 +1,86 @@
-"""Configuration Celery pour LinkGuardian - VERSION CORRIGÉE"""
+"""Configuration Celery pour LinkGuardian - version Flask + RabbitMQ + Beat"""
 
 from celery import Celery
+from celery.schedules import crontab
 
-# Créer l'instance Celery
+# ✅ Créer l'instance Celery STANDALONE (sans Flask au départ)
 celery = Celery(
     "linkguardian",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/0",
+    broker="amqp://guest:guest@localhost:5672//",   # RabbitMQ
+    backend="rpc://",             # Redis pour les résultats
 )
 
-# Configuration avec rate limiting et retry
+# Configuration commune
 celery.conf.update(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
     timezone="Europe/Paris",
     enable_utc=True,
-    # ⚙️ GESTION DES TÂCHES - CORRECTION DU PROBLÈME
-    task_acks_late=False,  # ✅ Accuse réception AVANT exécution (plus de re-traitement au redémarrage)
-    task_reject_on_worker_lost=True,  # ✅ Rejeter les tâches si le worker crash
-    worker_prefetch_multiplier=1,  # Traite 1 tâche à la fois par worker
-    # ⚙️ EXPIRATION DES TÂCHES
-    result_expires=3600,  # ✅ Les résultats expirent après 1h (nettoie Redis)
-    task_ignore_result=False,  # ✅ On garde les résultats pour le suivi
-    # ⚙️ RETRY AUTOMATIQUE
-    task_autoretry_for=(Exception,),  # Retry sur toutes les exceptions
-    task_retry_backoff=True,  # Délai exponentiel entre retries
-    task_retry_backoff_max=3600,  # Max 1h d'attente entre retries
-    task_max_retries=3,  # ✅ Réduit à 3 tentatives (au lieu de 5)
-    task_retry_jitter=True,  # Délai aléatoire pour éviter les "thundering herd"
-    # ⚙️ RATE LIMITING
-    task_default_rate_limit="10/m",  # 10 tâches par minute par défaut
-    # ⚙️ TIMEOUT
-    task_soft_time_limit=300,  # Timeout "soft" à 5 minutes
-    task_time_limit=360,  # Timeout "hard" à 6 minutes
-    # ⚙️ NETTOYAGE AUTOMATIQUE
-    worker_disable_rate_limits=False,  # Respecter les rate limits
+
+    # 🔥 IMPORTANT : Dire à Celery où trouver les tâches
+    imports=("tasks",),
+
+    # Gestion des tâches
+    task_acks_late=True,
+    task_reject_on_worker_lost=False,
+    worker_prefetch_multiplier=1,
+
+    # Expiration et résultats
+    result_expires=3600,
+    task_ignore_result=False,
+
+    # Retry automatique
+    task_autoretry_for=(Exception,),
+    task_retry_backoff=True,
+    task_retry_backoff_max=3600,
+    task_max_retries=3,
+    task_retry_jitter=True,
+
+    # Limitation du débit
+    task_default_rate_limit="10/m",
+    worker_disable_rate_limits=False,
+
+    # Timeout
+    task_soft_time_limit=300,
+    task_time_limit=360,
+
+    # Options RabbitMQ
+    broker_transport_options={
+        "visibility_timeout": 3600,
+        "confirm_publish": True,
+    },
 )
+
+# ✅ Planificateur de tâches (beat)
+celery.conf.beat_schedule = {
+    "check-all-sites-weekly": {
+        "task": "tasks.check_all_sites_weekly",
+        "schedule": crontab(day_of_week="monday", hour=2, minute=0),
+    },
+}
+
+
+def init_celery(app):
+    """
+    Initialise Celery avec le contexte Flask après la création de l'app.
+    À appeler depuis app.py après la création de l'instance Flask.
+    """
+    class ContextTask(celery.Task):
+        """Exécute chaque tâche dans un contexte Flask"""
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+    
+    celery.Task = ContextTask
+    return celery
+
+print("ℹ️ Celery chargé (à initialiser via init_celery(app) depuis app.py)")
+
+
+# ===============================
+# ⚙️ Configuration Celery
+# ===============================
+from app import app
+
+init_celery(app)  # Initialise Celery avec le contexte Flask

@@ -138,6 +138,7 @@
                         <td class="px-6 py-4 text-right">
                             <div class="flex items-center justify-end space-x-2">
 
+                                {% if not selected_owner %}
                                 <!-- Bouton : Vérifier le statut -->
                                 <button 
                                     hx-get="/check_status/{{ backlink.id }}" 
@@ -160,20 +161,8 @@
                                         Vérifier
                                     </span>
                                 </button>
+                                {% endif %}
 
-
-                                <!-- Preview -->
-                            <!--
-                                <button hx-get="/backlinks/preview?id={{ backlink.id }}" 
-                                        hx-target="#preview-content"
-                                        class="text-primary hover:text-primary/80 transition-colors p-2 rounded-lg hover:bg-gray-800"
-                                        title="Voir le contexte">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                    </svg>
-                                </button>
-                            -->
                                 <!-- Ouvrir -->
                                 <a href="{{ backlink.url }}" 
                                 target="_blank" 
@@ -185,17 +174,19 @@
                                 </a>
                             
                                 <!-- Supprimer -->
-                                <button 
-                                    hx-post="/delete_site/{{ backlink.id }}"
-                                    hx-target="#backlink-{{ backlink.id }}"
-                                    hx-swap="outerHTML swap:0.5s"
-                                    class="text-danger hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-gray-800"
-                                    title="Supprimer le site">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                            d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
+                                {% if not selected_owner %}
+                                    <button 
+                                        hx-post="/delete_site/{{ backlink.id }}"
+                                        hx-target="#backlink-{{ backlink.id }}"
+                                        hx-swap="outerHTML swap:0.5s"
+                                        class="text-danger hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-gray-800"
+                                        title="Supprimer le site">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                {% endif %}
                                 
                             </div>
                             

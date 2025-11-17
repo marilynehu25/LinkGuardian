@@ -592,6 +592,7 @@ def shared_data():
     Page permettant de consulter les données partagées par d'autres utilisateurs.
     L'utilisateur peut sélectionner un propriétaire (owner) parmi ceux qui lui ont donné accès.
     """
+    from sqlalchemy import func, and_
 
     # Étape 1 : récupérer tous les utilisateurs qui m'ont partagé leurs données
     shared_with_me = (
@@ -601,7 +602,7 @@ def shared_data():
         .all()
     )
 
-    # Étape 2 : récupérer éventuellement l’utilisateur sélectionné
+    # Étape 2 : récupérer éventuellement l'utilisateur sélectionné
     selected_owner_id = request.args.get("owner_id", type=int)
     backlinks = []
     selected_owner = None
@@ -609,13 +610,16 @@ def shared_data():
     total_pages = 1
     sort = "created"
     order = "desc"
+    stats = {}  # ✅ Initialiser stats ici
+
+    print(f"🔍 DEBUG - selected_owner_id: {selected_owner_id}")  # ✅ DEBUG
 
     if selected_owner_id:
         selected_owner = User.query.get(selected_owner_id)
         if not selected_owner:
             abort(404)
 
-        # Vérifier le droit d’accès
+        # Vérifier le droit d'accès
         if not user_can_access_data(current_user.id, selected_owner.id):
             abort(403)
 
@@ -634,6 +638,48 @@ def shared_data():
         )
         current_page = page
 
+                # ✅ EST-CE QUE VOUS AVEZ CETTE BOUCLE ???
+        for site in backlinks:
+            if site.page_trust and site.page_value:
+                site.quality = round((site.page_trust * 0.6) + (site.page_value * 0.4), 1)
+            else:
+                site.quality = 0
+            print(f"🔍 DEBUG - Backlink {site.id}: quality={site.quality}, PV={site.page_value}, PT={site.page_trust}")
+
+        # ✅ CALCUL DES STATISTIQUES
+        all_sites = Website.query.filter_by(user_id=selected_owner.id)
+        total = all_sites.count()
+        
+        print(f"🔍 DEBUG - total sites: {total}")  # ✅ DEBUG
+
+        if total > 0:
+            follow_count = all_sites.filter(Website.link_follow_status == "follow").count()
+            indexed_count = all_sites.filter(Website.google_index_status == "Indexé !").count()
+            avg_value = all_sites.with_entities(func.avg(Website.page_value)).scalar() or 0
+            avg_trust = all_sites.with_entities(func.avg(Website.page_trust)).scalar() or 0
+            avg_quality = round((avg_trust * 0.6) + (avg_value * 0.4), 1)
+            
+            print(f"🔍 DEBUG - avg_value: {avg_value}")  # ✅ DEBUG
+            print(f"🔍 DEBUG - avg_trust: {avg_trust}")  # ✅ DEBUG
+            print(f"🔍 DEBUG - avg_quality: {avg_quality}")  # ✅ DEBUG
+        else:
+            follow_count = indexed_count = avg_value = avg_trust = avg_quality = 0
+
+        stats = {
+            "total": total,
+            "follow": follow_count,
+            "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
+            "indexed": indexed_count,
+            "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
+            "avg_quality": f"{avg_quality:.1f}",
+            "avg_value": f"{avg_value:.1f}",
+            "avg_trust": f"{avg_trust:.1f}",
+        }
+        
+        print(f"🔍 DEBUG - stats dict: {stats}")  # ✅ DEBUG
+
+    print(f"🔍 DEBUG - stats final: {stats}")  # ✅ DEBUG
+    
     return render_template(
         "shared/shared_data.html",
         shared_with_me=shared_with_me,
@@ -643,7 +689,7 @@ def shared_data():
         total_pages=total_pages,
         sort=sort,
         order=order,
+        stats=stats,
         # ✅ Base de pagination propre à cette page
         pagination_base_url=url_for("sites_routes.shared_data"),
     )
-

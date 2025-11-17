@@ -638,7 +638,6 @@ def shared_data():
         )
         current_page = page
 
-                # ✅ EST-CE QUE VOUS AVEZ CETTE BOUCLE ???
         for site in backlinks:
             if site.page_trust and site.page_value:
                 site.quality = round((site.page_trust * 0.6) + (site.page_value * 0.4), 1)

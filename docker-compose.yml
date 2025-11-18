@@ -1,11 +1,87 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  linkguardian:
+
+  web:
     build: .
+    container_name: linkguardian_web
+    restart: always
     ports:
       - "5000:5000"
-    volumes:
-      - .:/app
+    depends_on:
+      - postgres
+      - rabbitmq
     environment:
-      - FLASK_ENV=development
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_DB: site
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+
+  worker:
+    build: .
+    container_name: linkguardian_worker
+    restart: always
+    command: celery -A celery_app.celery worker --loglevel=INFO
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_DB: site
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+
+  beat:
+    build: .
+    container_name: linkguardian_beat
+    restart: always
+    command: celery -A celery_app.celery beat --loglevel=INFO
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_DB: site
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+
+  postgres:
+    image: postgres:15
+    container_name: linkguardian_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_DB: site
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: linkguardian_rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+
+volumes:
+  pgdata:

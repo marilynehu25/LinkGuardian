@@ -8,6 +8,7 @@ from flask import Flask
 from flask_executor import Executor
 from flask_login import current_user
 from flask_migrate import Migrate
+import os
 
 # ===============================
 # ⚙️ Import interne - Base et Celery
@@ -50,8 +51,18 @@ AIOHTTP_TIMEOUT = ClientTimeout(total=30)
 # 🚀 Création de l'application Flask
 # ===============================
 app = Flask(__name__)
-app.secret_key = "dfsdfsdfdfsdfsdfsdfsdfsdfsdfsdffsd"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///site.db"
+app.secret_key = os.getenv("SECRET_KEY", "dfsdfsdfdfsdfsdfsdfsdfsdfsdfsdffsd")  # ⚠️ À changer !
+
+db_user = os.getenv("POSTGRES_USER", "postgres")
+db_pass = os.getenv("POSTGRES_PASSWORD", "25082001Ma#")
+db_host = os.getenv("DB_HOST", "postgres")
+db_port = os.getenv("DB_PORT", "5432")
+db_name = os.getenv("POSTGRES_DB", "site")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+)
+
 
 # ===============================
 # 🧱 Initialisation des extensions
@@ -60,13 +71,6 @@ db.init_app(app)
 migrate = Migrate(app, db)
 login_manager.init_app(app)  # ⚠️ Obligatoire avant Admin
 executor = Executor(app)
-
-with app.app_context():
-    admin_user = User.query.get(1)
-    if admin_user and admin_user.role != "admin":
-        admin_user.role = "admin"
-        db.session.commit()
-        print(f"✅ Utilisateur {admin_user.username} défini comme administrateur.")
 
 # ===============================
 # 🔐 Configuration Flask-Login
@@ -151,5 +155,23 @@ def inject_global_stats():
 # ===============================
 # 🏁 Lancement de l'application
 # ===============================
+
+from celery_app import init_celery
+init_celery(app)
+
+with app.app_context():
+    try:
+        # Créer les tables si elles n'existent pas
+        db.create_all()
+        print("✅ Tables vérifiées/créées")
+    except Exception as e:
+        print(f"⚠️ Erreur lors de la création des tables: {e}")
+        
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    # Mode développement avec rechargement automatique
+    app.run(
+        host="0.0.0.0", 
+        port=5000, 
+        debug=True,
+        use_reloader=True  # ⬅️ Active le rechargement
+    )

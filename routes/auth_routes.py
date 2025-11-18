@@ -51,6 +51,12 @@ def signup():
         )
         new_user.set_password(password)
 
+        # Si c’est le premier utilisateur → admin
+        if User.query.count() == 0:
+            new_user.role = "admin"
+        else:
+            new_user.role = "user"
+
         db.session.add(new_user)
         db.session.commit()
 

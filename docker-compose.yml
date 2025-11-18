@@ -6,6 +6,8 @@ services:
     build: .
     container_name: linkguardian_web
     restart: always
+    volumes:
+      - .:/app
     ports:
       - "5000:5000"
     depends_on:

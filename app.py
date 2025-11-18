@@ -158,14 +158,6 @@ def inject_global_stats():
 
 from celery_app import init_celery
 init_celery(app)
-
-with app.app_context():
-    try:
-        # Créer les tables si elles n'existent pas
-        db.create_all()
-        print("✅ Tables vérifiées/créées")
-    except Exception as e:
-        print(f"⚠️ Erreur lors de la création des tables: {e}")
         
 if __name__ == "__main__":
     # Mode développement avec rechargement automatique

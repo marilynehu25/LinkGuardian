@@ -443,16 +443,7 @@ def import_data():
 
         sources = Source.query.all()
 
-        return render_template(
-            "backlinks/list.html",
-            backlinks=websites,
-            stats=stats,
-            current_page=1,
-            total_pages=1,
-            sort="created",
-            order="desc",
-            sources=sources,
-        )
+        return redirect(request.referrer or url_for("backlinks_routes.backlinks_list"))
 
     # 🚫 En GET, on ne veut plus afficher import.html non plus
     # On renvoie directement la table au lieu du formulaire

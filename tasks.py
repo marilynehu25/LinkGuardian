@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime
 
+from functools import wraps
+
 from aiohttp import ClientError, ClientSession
 
 # Importer Celery depuis le fichier dédié
@@ -201,7 +203,10 @@ def check_all_user_sites(user_id):
             continue
 
         countdown = i * 4  # Délai progressif
-        task = check_single_site.apply_async(args=[site.id], countdown=countdown)
+        task = celery.tasks["tasks.check_single_site"].apply_async(
+                args=[site.id],
+                countdown=countdown
+            )
         task_ids.append(task.id)
 
         if (i + 1) % 10 == 0:
@@ -223,7 +228,6 @@ def check_all_user_sites(user_id):
         "task_ids": task_ids,
         "estimated_duration_minutes": (total_sites * 6) / 60,
     }
-
 
 @celery.task(name="tasks.check_all_sites_weekly")
 def check_all_sites_weekly():

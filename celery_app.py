@@ -11,7 +11,7 @@ broker_pass = os.getenv("RABBITMQ_DEFAULT_PASS")
 # ✅ Créer l'instance Celery STANDALONE (sans Flask au départ)
 celery = Celery(
     "linkguardian",
-    broker=f"amqp://{broker_user}:{broker_pass}@rabbitmq:5672//",  # ⚠️ f-string !
+    broker=f"amqp://{broker_user}:{broker_pass}@rabbitmq:5672//",
     backend="rpc://",
 )
 
@@ -22,28 +22,21 @@ celery.conf.update(
     accept_content=["json"],
     timezone="Europe/Paris",
     enable_utc=True,
-    # 🔥 IMPORTANT : Dire à Celery où trouver les tâches
     imports=("tasks",),
-    # Gestion des tâches
     task_acks_late=True,
     task_reject_on_worker_lost=False,
     worker_prefetch_multiplier=1,
-    # Expiration et résultats
     result_expires=3600,
     task_ignore_result=False,
-    # Retry automatique
     task_autoretry_for=(Exception,),
     task_retry_backoff=True,
     task_retry_backoff_max=3600,
     task_max_retries=3,
     task_retry_jitter=True,
-    # Limitation du débit
     task_default_rate_limit="10/m",
     worker_disable_rate_limits=False,
-    # Timeout
     task_soft_time_limit=300,
     task_time_limit=360,
-    # Options RabbitMQ
     broker_transport_options={
         "visibility_timeout": 3600,
         "confirm_publish": True,
@@ -59,15 +52,44 @@ celery.conf.beat_schedule = {
 }
 
 
+def get_flask_app():
+    """
+    Crée et retourne l'instance Flask avec toute sa configuration.
+    Cette fonction est appelée par les workers Celery.
+    """
+    from flask import Flask
+    from flask_migrate import Migrate
+
+    from database import db
+    from routes.login_manager import login_manager
+    
+    app = Flask(__name__)
+    app.secret_key = os.getenv("SECRET_KEY", "dfsdfsdfdfsdfsdfsdfsdfsdfsdfsdffsd")
+    
+    db_user = os.getenv("POSTGRES_USER", "postgres")
+    db_pass = os.getenv("POSTGRES_PASSWORD", "25082001Ma#")
+    db_host = os.getenv("DB_HOST", "postgres")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("POSTGRES_DB", "site")
+    
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    )
+    
+    db.init_app(app)
+    migrate = Migrate(app, db)
+    login_manager.init_app(app)
+    
+    return app
+
+
 def init_celery(app):
     """
     Initialise Celery avec le contexte Flask après la création de l'app.
     À appeler depuis app.py après la création de l'instance Flask.
     """
-
     class ContextTask(celery.Task):
         """Exécute chaque tâche dans un contexte Flask"""
-
         def __call__(self, *args, **kwargs):
             with app.app_context():
                 return self.run(*args, **kwargs)
@@ -76,4 +98,8 @@ def init_celery(app):
     return celery
 
 
-print("ℹ️ Celery chargé (à initialiser via init_celery(app) depuis app.py)")
+# 🔥 IMPORTANT : Créer flask_app pour les workers
+flask_app = get_flask_app()
+init_celery(flask_app)
+
+#print("ℹ️ Celery initialisé avec contexte Flask pour les workers")

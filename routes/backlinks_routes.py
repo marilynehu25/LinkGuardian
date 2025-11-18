@@ -90,6 +90,9 @@ def backlinks_list():
         ).count()
         avg_value = all_sites.with_entities(func.avg(Website.page_value)).scalar() or 0
         avg_trust = all_sites.with_entities(func.avg(Website.page_trust)).scalar() or 0
+        avg_trust = float(avg_trust) if avg_trust is not None else 0
+        avg_value = float(avg_value) if avg_value is not None else 0
+
         avg_quality = round((avg_trust * 0.6) + (avg_value * 0.4), 1)
     else:
         follow_count = indexed_count = avg_value = avg_trust = avg_quality = 0

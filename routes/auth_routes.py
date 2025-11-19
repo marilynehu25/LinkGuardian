@@ -3,7 +3,6 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import (
     current_user,
-    login_required,
     login_user,
     logout_user,
 )
@@ -52,7 +51,7 @@ def signup():
         new_user.set_password(password)
 
         # Si c’est le premier utilisateur → admin
-        if User.query.count() == 0:
+        if User.query.count()<2:
             new_user.role = "admin"
         else:
             new_user.role = "user"

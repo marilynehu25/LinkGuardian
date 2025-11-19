@@ -29,7 +29,11 @@ class Website(db.Model):
     last_checked = db.Column(db.DateTime, nullable=True)
 
     # ✅ CORRECT : ForeignKey pointe vers user.id
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False
+    )
 
     page_value = db.Column(db.Integer)
     page_trust = db.Column(db.Integer)
@@ -90,6 +94,18 @@ class User(UserMixin, db.Model):
     #                                 'user' = utilisateur simple
     role = db.Column(db.String(50), default="user")
 
+    shares_as_owner = db.relationship(
+        "UserAccess",
+        foreign_keys="[UserAccess.owner_id]",
+        cascade="all, delete-orphan"
+    )
+    shares_as_grantee = db.relationship(
+        "UserAccess",
+        foreign_keys="[UserAccess.grantee_id]",
+        cascade="all, delete-orphan"
+    )
+
+
     def set_password(self, password):
         """Fonction permettant de hasher le mot de passe, éviter que quand
         la base de données est piratée, le mot de passe soit en clair.
@@ -125,9 +141,11 @@ class UserAccess(db.Model):
     - granted_by : l'admin qui a accordé le droit (facultatif)
     """
     id = db.Column(db.Integer, primary_key=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    grantee_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    granted_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+    owner_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    grantee_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    granted_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     # Relations pratiques

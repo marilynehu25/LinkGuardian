@@ -403,22 +403,19 @@ def import_data():
                     )  # 🔧 Ajouter à la liste de vérification
                     print(f"✅ Site ajouté : {url}")
 
-            db.session.commit()
+                    db.session.commit()
 
-            # 🔧 Vérifier TOUS les sites (nouveaux ET mis à jour)
-            if websites_to_check:
-                print(
-                    f"🚀 Lancement de la vérification de {len(websites_to_check)} sites..."
-                )
-                for website in websites_to_check:
-                    from tasks import check_single_site
-                    check_single_site.delay(website.id)
-                    print(f"  ✓ Tâche lancée pour {website.url}")
-
-            flash(
-                "Import terminé ✅ Les URLs ont été ajoutées ou mises à jour.",
-                "success",
-            )
+                    if websites_to_check:
+                        from tasks import check_single_site
+                        
+                        task_ids = []
+                        for website in websites_to_check:  # ← Uniquement les NOUVEAUX sites
+                            task = check_single_site.apply_async(
+                                args=[website.id],
+                                queue='standard',
+                                priority=3,
+                            )
+                            task_ids.append(task.id)
 
         except Exception as e:
             db.session.rollback()

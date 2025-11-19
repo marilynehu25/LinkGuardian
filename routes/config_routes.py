@@ -117,7 +117,7 @@ def admin():
 
     # On rend le même template que la page principale
     return render_template(
-        "settings/_table_admin.html",
+        "settings/index.html",
         users=users,
         total_users=total_users,
         total_admins=total_admins,
@@ -298,7 +298,7 @@ def delete_user(user_id):
         # Empêcher un admin de se supprimer lui-même
         if user_id == current_user.id:
             flash("Vous ne pouvez pas supprimer votre propre compte.", "error")
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Stocker le nom pour le message
         user_name = f"{user.first_name} {user.last_name}"
@@ -312,8 +312,8 @@ def delete_user(user_id):
     except Exception as e:
         db.session.rollback()
         flash(f"Erreur lors de la suppression de l'utilisateur : {str(e)}", "error")
-
-    return redirect(url_for("config_routes.admin"))
+    
+    return redirect(url_for("config_routes.configuration", tab="admin"))
 
 
 # À ajouter dans config_routes.py
@@ -609,12 +609,23 @@ def add_share():
 def delete_share(share_id):
     """
     Supprimer un droit de partage :
-    - Admin → peut tout supprimer
+    - Super-admin (id=1) → peut tout supprimer
+    - Admin → peut supprimer les partages des utilisateurs simples
     - Utilisateur → ne peut supprimer que ses propres partages
     """
     share = UserAccess.query.get_or_404(share_id)
 
-    if current_user.role != "admin" and share.owner_id != current_user.id:
+    # Super-admin peut tout supprimer
+    if current_user.id == 1:
+        pass  # Autorisé
+    # Admin peut supprimer les partages des users simples
+    elif current_user.role == "admin":
+        owner = User.query.get(share.owner_id)
+        if owner and owner.role == "admin" and owner.id != current_user.id:
+            # Un admin ne peut pas supprimer le partage d'un autre admin
+            abort(403)
+    # Utilisateur simple ne peut supprimer que ses propres partages
+    elif share.owner_id != current_user.id:
         abort(403)
 
     db.session.delete(share)
@@ -622,4 +633,3 @@ def delete_share(share_id):
 
     flash("Droit de partage supprimé ✅", "success")
     return redirect(url_for("config_routes.configuration", tab="sharing"))
-

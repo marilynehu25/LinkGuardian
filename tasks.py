@@ -56,6 +56,7 @@ async def process_site_async(site_id):
             # Sauvegarde de l'historique (ancien état)
             old_site = Website(
                 url=site.url,
+                domains=site.domains,  # ✅ IMPORTANT : ne pas oublier le domaine
                 link_to_check=site.link_to_check,
                 anchor_text=site.anchor_text,
                 link_status=site.link_status,
@@ -92,15 +93,11 @@ async def process_site_async(site_id):
                 fetch_url_data(site.url, async_mode=False)
             except Exception as e:
                 error_msg = str(e).lower()
-                # Détecter les erreurs de rate limit
-                if (
-                    "rate limit" in error_msg
-                    or "429" in error_msg
-                    or "too many" in error_msg
-                ):
+                if "rate limit" in error_msg or "429" in error_msg:
                     print(f"⚠️ Rate limit Babbar pour {site.url}")
                     raise APIRateLimitError("babbar", retry_after=60)
                 else:
+                    # ⚠️ NE PAS PROPAGER - juste logger l'erreur
                     print(f"⚠️ Erreur Babbar pour {site.url}: {e}")
 
             # Sauvegarde en base

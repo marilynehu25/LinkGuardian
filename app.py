@@ -95,11 +95,6 @@ app.register_blueprint(anchors_routes)
 app.register_blueprint(domains_routes)
 app.register_blueprint(tag_serv)
 
-print("\n=== ROUTES DISPONIBLES ===")
-for rule in app.url_map.iter_rules():
-    print(f"{rule.endpoint}: {rule.rule}")
-print("========================\n")
-
 
 # ===============================
 # 📊 Variables globales pour templates

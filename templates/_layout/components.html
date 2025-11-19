@@ -158,23 +158,23 @@
 {% endmacro %}
 
 <!-- Macro pour la pagination -->
-{% macro pagination(current_page, total_pages, base_url, target_id, owner_id=None) %}
-{# Calculer l'URL publique (sans /partial/table) #}
-{% set public_url = base_url.replace('/partial/table', '') %}
-
+{% macro pagination(current_page, total_pages, base_url, target_id, owner_id=None, public_url=None) %}
 <div class="flex items-center justify-between">
     <div class="text-sm text-gray-400">
         Page {{ current_page }} sur {{ total_pages }}
     </div>
     
     <div class="flex items-center space-x-2">
+        {# Fonction utilitaire pour gérer ? ou & #}
+        {% set sep = '&' if '?' in base_url else '?' %}
+
         <!-- Bouton Précédent -->
         {% if current_page > 1 %}
         <button 
-            hx-get="{{ base_url }}?page={{ current_page|int - 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+            hx-get="{{ base_url }}{{ sep }}page={{ current_page|int - 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
             hx-target="#{{ target_id }}" 
             hx-swap="outerHTML"
-            hx-push-url="{{ public_url }}?page={{ current_page|int - 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+            hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ current_page|int - 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
             class="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors">
             Précédent
         </button>
@@ -191,10 +191,10 @@
                     <span class="px-3 py-2 text-sm font-bold bg-primary text-white rounded-lg">{{ p }}</span>
                 {% elif p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
                     <button 
-                        hx-get="{{ base_url }}?page={{ p }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+                        hx-get="{{ base_url }}{{ sep }}page={{ p }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
                         hx-target="#{{ target_id }}"
                         hx-swap="outerHTML"
-                        hx-push-url="{{ public_url }}?page={{ p }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+                        hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ p }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
                         class="px-3 py-2 text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 rounded-lg transition-colors">
                         {{ p }}
                     </button>
@@ -207,10 +207,10 @@
         <!-- Bouton Suivant -->
         {% if current_page < total_pages %}
         <button 
-            hx-get="{{ base_url }}?page={{ current_page|int + 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+            hx-get="{{ base_url }}{{ sep }}page={{ current_page|int + 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
             hx-target="#{{ target_id }}" 
             hx-swap="outerHTML"
-            hx-push-url="{{ public_url }}?page={{ current_page|int + 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+            hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ current_page|int + 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
             class="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors">
             Suivant
         </button>
@@ -222,6 +222,7 @@
     </div>
 </div>
 {% endmacro %}
+
 
 
 <!-- Macro pour les filtres -->

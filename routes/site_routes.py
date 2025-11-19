@@ -445,6 +445,7 @@ def import_data():
 
         return redirect(request.referrer or url_for("backlinks_routes.backlinks_list"))
 
+
     # 🚫 En GET, on ne veut plus afficher import.html non plus
     # On renvoie directement la table au lieu du formulaire
     websites = Website.query.filter_by(user_id=current_user.id).all()
@@ -583,7 +584,7 @@ def shared_data():
     Page permettant de consulter les données partagées par d'autres utilisateurs.
     L'utilisateur peut sélectionner un propriétaire (owner) parmi ceux qui lui ont donné accès.
     """
-    from sqlalchemy import func, and_
+    from sqlalchemy import func
 
     # Étape 1 : récupérer tous les utilisateurs qui m'ont partagé leurs données
     shared_with_me = (
@@ -601,7 +602,7 @@ def shared_data():
     total_pages = 1
     sort = "created"
     order = "desc"
-    stats = {}  # ✅ Initialiser stats ici
+    stats = None  # rien tant qu'il n'y a pas d'owner
 
     print(f"🔍 DEBUG - selected_owner_id: {selected_owner_id}")  # ✅ DEBUG
 
@@ -618,7 +619,9 @@ def shared_data():
         per_page = 10
         page = request.args.get("page", 1, type=int)
 
-        query = Website.query.filter_by(user_id=selected_owner.id).order_by(Website.last_checked.desc())
+        query = Website.query.filter_by(user_id=selected_owner.id).order_by(
+            Website.last_checked.desc()
+        )
         total_items = query.count()
         total_pages = ceil(total_items / per_page) if total_items > 0 else 1
 
@@ -629,29 +632,48 @@ def shared_data():
         )
         current_page = page
 
+        # Qualité pour chaque site
         for site in backlinks:
-            if site.page_trust and site.page_value:
-                site.quality = round((site.page_trust * 0.6) + (site.page_value * 0.4), 1)
+            trust = float(site.page_trust or 0)
+            value = float(site.page_value or 0)
+
+            if trust or value:
+                site.quality = round((trust * 0.6) + (value * 0.4), 1)
             else:
                 site.quality = 0
-            print(f"🔍 DEBUG - Backlink {site.id}: quality={site.quality}, PV={site.page_value}, PT={site.page_trust}")
 
-        # ✅ CALCUL DES STATISTIQUES
+            print(
+                f"🔍 DEBUG - Backlink {site.id}: "
+                f"quality={site.quality}, PV={site.page_value}, PT={site.page_trust}"
+            )
+
+        # ✅ CALCUL DES STATISTIQUES (sur TOUS les sites du owner)
         all_sites = Website.query.filter_by(user_id=selected_owner.id)
         total = all_sites.count()
-        
+
         print(f"🔍 DEBUG - total sites: {total}")  # ✅ DEBUG
 
         if total > 0:
-            follow_count = all_sites.filter(Website.link_follow_status == "follow").count()
-            indexed_count = all_sites.filter(Website.google_index_status == "Indexé !").count()
-            avg_value = all_sites.with_entities(func.avg(Website.page_value)).scalar() or 0
-            avg_trust = all_sites.with_entities(func.avg(Website.page_trust)).scalar() or 0
+            follow_count = all_sites.filter(
+                Website.link_follow_status == "follow"
+            ).count()
+            indexed_count = all_sites.filter(
+                Website.google_index_status == "Indexé !"
+            ).count()
+
+            # Moyennes brutes
+            avg_value_db = all_sites.with_entities(
+                func.avg(Website.page_value)
+            ).scalar()
+            avg_trust_db = all_sites.with_entities(
+                func.avg(Website.page_trust)
+            ).scalar()
+
+            # Conversion sécurisée en float
+            avg_value = float(avg_value_db) if avg_value_db is not None else 0
+            avg_trust = float(avg_trust_db) if avg_trust_db is not None else 0
+
             avg_quality = round((avg_trust * 0.6) + (avg_value * 0.4), 1)
-            
-            print(f"🔍 DEBUG - avg_value: {avg_value}")  # ✅ DEBUG
-            print(f"🔍 DEBUG - avg_trust: {avg_trust}")  # ✅ DEBUG
-            print(f"🔍 DEBUG - avg_quality: {avg_quality}")  # ✅ DEBUG
         else:
             follow_count = indexed_count = avg_value = avg_trust = avg_quality = 0
 
@@ -665,11 +687,11 @@ def shared_data():
             "avg_value": f"{avg_value:.1f}",
             "avg_trust": f"{avg_trust:.1f}",
         }
-        
+
         print(f"🔍 DEBUG - stats dict: {stats}")  # ✅ DEBUG
 
     print(f"🔍 DEBUG - stats final: {stats}")  # ✅ DEBUG
-    
+
     return render_template(
         "shared/shared_data.html",
         shared_with_me=shared_with_me,
@@ -680,6 +702,65 @@ def shared_data():
         sort=sort,
         order=order,
         stats=stats,
-        # ✅ Base de pagination propre à cette page
-        pagination_base_url=url_for("sites_routes.shared_data"),
+        # 👉 IMPORTANT : base de pagination = route PARTIELLE
+        pagination_base_url=(
+            url_for("sites_routes.shared_data_table_partial", owner_id=selected_owner.id)
+            if selected_owner
+            else None
+        ),
+    )
+
+
+@sites_routes.route("/shared_data/table", methods=["GET"])
+@login_required
+def shared_data_table_partial():
+    """Partial HTMX - seulement le tableau pour les données partagées"""
+    from sqlalchemy import func
+
+    # ⚡ Si ce n’est pas un appel HTMX, redirige vers la page complète
+    if not request.headers.get("HX-Request"):
+        page = request.args.get("page", 1, type=int)
+        owner_id = request.args.get("owner_id", type=int)
+        return redirect(url_for("sites_routes.shared_data", owner_id=owner_id, page=page))
+
+    owner_id = request.args.get("owner_id", type=int)
+    if not owner_id:
+        abort(400)
+
+    selected_owner = User.query.get_or_404(owner_id)
+
+    # Vérification d’accès
+    if not user_can_access_data(current_user.id, selected_owner.id):
+        abort(403)
+
+    per_page = 10
+    page = request.args.get("page", 1, type=int)
+
+    query = Website.query.filter_by(user_id=selected_owner.id).order_by(
+        Website.last_checked.desc()
+    )
+    total_items = query.count()
+    total_pages = ceil(total_items / per_page) if total_items > 0 else 1
+
+    backlinks = (
+        query.offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    # Calcul qualité
+    for site in backlinks:
+        trust = float(site.page_trust or 0)
+        value = float(site.page_value or 0)
+        site.quality = round((trust * 0.6) + (value * 0.4), 1) if trust or value else 0
+
+    return render_template(
+        "backlinks/_table.html",
+        backlinks=backlinks,
+        current_page=page,
+        total_pages=total_pages,
+        selected_owner=selected_owner,
+        pagination_base_url=url_for(
+            "sites_routes.shared_data_table_partial", owner_id=selected_owner.id
+        ),
     )

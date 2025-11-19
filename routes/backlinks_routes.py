@@ -1,6 +1,6 @@
 # routes/backlinks_routes.py
 
-from flask import Blueprint, render_template, request, url_for
+from flask import Blueprint, render_template, request, url_for, redirect
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -128,15 +128,23 @@ def backlinks_list():
         filters=filters,
         tags=tags,
         sources=sources,
-        pagination_base_url=url_for("backlinks_routes.backlinks_list"),  # ✅ Ajout clé
+        # 👉 La pagination HTMX doit appeler la route partielle
+        pagination_base_url=url_for("backlinks_routes.backlinks_table_partial"),
     )
+
 
 @backlinks_routes.route("/backlinks/partial/table")
 @login_required
 def backlinks_table_partial():
     """Partial HTMX - seulement le tableau"""
 
-    # Requête filtrée (MÊME logique que la route principale)
+    # ⚡ Si ce n’est pas un appel HTMX, on redirige vers la page complète
+    if not request.headers.get("HX-Request"):
+        # récupère le n° de page pour rediriger proprement
+        page = request.args.get("page", 1, type=int)
+        return redirect(url_for("backlinks_routes.backlinks_list", page=page))
+
+    # Requête filtrée
     query = get_filtered_query()
 
     # Pagination
@@ -144,10 +152,18 @@ def backlinks_table_partial():
     per_page = 10
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
+    # Calcul de la qualité
+    for site in pagination.items:
+        if site.page_trust and site.page_value:
+            site.quality = round((site.page_trust * 0.6) + (site.page_value * 0.4), 1)
+        else:
+            site.quality = 0
+
     return render_template(
         "backlinks/_table.html",
         backlinks=pagination.items,
         current_page=pagination.page,
         total_pages=pagination.pages or 1,
+        pagination_base_url=url_for("backlinks_routes.backlinks_table_partial"),
     )
 

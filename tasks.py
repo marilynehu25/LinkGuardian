@@ -1,8 +1,6 @@
 import asyncio
 from datetime import datetime
-
 from functools import wraps
-
 from aiohttp import ClientError, ClientSession
 
 # Importer Celery depuis le fichier dédié
@@ -132,21 +130,30 @@ async def process_site_async(site_id):
     bind=True,
     max_retries=5,
     default_retry_delay=60,
-    rate_limit="15/m",
+    rate_limit="50/m",  # ⬆️ Augmenté pour parallélisme
     autoretry_for=(APIRateLimitError, ClientError),
     retry_backoff=True,
     retry_backoff_max=600,
     retry_jitter=True,
 )
-def check_single_site(self, site_id):
-    """Vérifie un seul site avec gestion intelligente des retries"""
+def check_single_site(self, site_id, urgent=False):
+    """Vérifie un seul site avec gestion intelligente des retries
+    
+    Args:
+        site_id: ID du site à vérifier
+        urgent: Si True, la tâche sera routée vers la queue 'urgent' (priorité haute)
+    """
     try:
-        print(f"🔍 Vérification du site ID: {site_id}")
+        # 🚀 Routing dynamique vers queue urgent si demandé
+        if urgent and self.request.delivery_info:
+            self.request.delivery_info['priority'] = 9
+            
+        print(f"🔍 Vérification du site ID: {site_id} {'[URGENT]' if urgent else ''}")
 
         site = Website.query.get(site_id)
         if not site:
             # 🚫 Site supprimé : on stoppe immédiatement sans retry
-            print(f"⏭️  Site {site_id} ignoré (supprimé) — tâche annulée.")
+            print(f"⏭️ Site {site_id} ignoré (supprimé) — tâche annulée.")
             self.request.callbacks = None
             self.request.errbacks = None
             return {"success": True, "skipped": True, "site_id": site_id}
@@ -183,41 +190,63 @@ def check_single_site(self, site_id):
 
 @celery.task(
     name="tasks.check_all_user_sites",
-    rate_limit="2/m",  # Max 2 vérifications complètes par minute
+    rate_limit="10/m",  # ⬆️ Augmenté de 2/m à 10/m
 )
-def check_all_user_sites(user_id):
-    """Vérifie tous les sites d'un utilisateur avec espacement intelligent"""
-    print(f"🔄 Début vérification pour l'utilisateur {user_id}")
+def check_all_user_sites(user_id, urgent=False):
+    """Vérifie tous les sites d'un utilisateur
+    
+    🚀 OPTIMISATION: Les tâches sont lancées sans countdown.
+    Les workers multiples se répartissent automatiquement la charge.
+    
+    Args:
+        user_id: ID de l'utilisateur
+        urgent: Si True, les vérifications seront prioritaires
+    """
+    print(f"📄 Début vérification pour l'utilisateur {user_id}")
 
     sites = Website.query.filter_by(user_id=user_id).all()
     total_sites = len(sites)
     print(f"📊 {total_sites} sites à vérifier")
 
+    if total_sites == 0:
+        return {
+            "user_id": user_id,
+            "total_sites": 0,
+            "planned_tasks": 0,
+            "skipped_sites": 0,
+            "task_ids": [],
+        }
+
     task_ids = []
     skipped = 0
 
+    # 🚀 STRATÉGIE: Lancer toutes les tâches immédiatement
+    # Les workers multiples vont se répartir le travail automatiquement
     for i, site in enumerate(sites):
         # 🧹 Vérifie que le site est encore valide
         if not site or not site.url:
             skipped += 1
             continue
 
-        countdown = i * 4  # Délai progressif
-        task = celery.tasks["tasks.check_single_site"].apply_async(
-                args=[site.id],
-                countdown=countdown
-            )
+        # ✅ Lancer la tâche SANS countdown
+        # Le système de queues et les multiples workers géreront la distribution
+        task = check_single_site.apply_async(
+            args=[site.id],
+            kwargs={'urgent': urgent},
+            queue='urgent' if urgent else 'standard',  # Routing vers bonne queue
+            priority=9 if urgent else 5,  # Priorité explicite
+        )
         task_ids.append(task.id)
 
-        if (i + 1) % 10 == 0:
+        # Log tous les 25 sites
+        if (i + 1) % 25 == 0:
             print(f"  ⏳ {i + 1}/{total_sites} tâches planifiées...")
 
-    print(
-        f"✅ {len(task_ids)} tâches planifiées avec délai progressif ({skipped} sites ignorés)."
-    )
-
+    print(f"✅ {len(task_ids)} tâches lancées ({skipped} sites ignorés).")
+    print(f"🔥 Mode: {'URGENT (priorité haute)' if urgent else 'STANDARD'}")
+    
+    # Snapshot des stats
     from services.stats_service import save_stats_snapshot
-
     save_stats_snapshot(user_id)
 
     return {
@@ -226,12 +255,17 @@ def check_all_user_sites(user_id):
         "planned_tasks": len(task_ids),
         "skipped_sites": skipped,
         "task_ids": task_ids,
-        "estimated_duration_minutes": (total_sites * 6) / 60,
+        "mode": "urgent" if urgent else "standard",
     }
+
 
 @celery.task(name="tasks.check_all_sites_weekly")
 def check_all_sites_weekly():
-    """Vérification hebdomadaire automatique avec espacement entre utilisateurs"""
+    """Vérification hebdomadaire automatique
+    
+    🎯 OPTIMISATION: Espacement entre utilisateurs réduit de 30min à 5min
+    Les workers multiples peuvent gérer plusieurs utilisateurs simultanément
+    """
     print("⏰ Début vérification hebdomadaire")
 
     users = User.query.all()
@@ -239,20 +273,20 @@ def check_all_sites_weekly():
 
     print(f"👥 {total_users} utilisateurs trouvés")
 
-    # Lancer les vérifications avec 30 minutes d'écart entre chaque utilisateur
+    # 🚀 Espacement réduit : 5 minutes entre chaque utilisateur
+    # Avec 3+ workers, plusieurs utilisateurs seront traités en parallèle
     for i, user in enumerate(users):
-        countdown = i * 1800  # 1800s = 30 minutes
+        countdown = i * 300  # 300s = 5 minutes (au lieu de 30)
 
-        print(
-            f"📅 Vérification user {user.id} planifiée dans {countdown / 60:.0f} minutes"
-        )
+        print(f"📅 Vérification user {user.id} planifiée dans {countdown / 60:.0f} minutes")
 
         check_all_user_sites.apply_async(
             args=[user.id],
             countdown=countdown,
+            queue='weekly',  # Queue dédiée basse priorité
         )
 
-    total_duration_hours = (total_users * 30) / 60
+    total_duration_hours = (total_users * 5) / 60
     print(f"✅ Vérifications lancées pour {total_users} utilisateurs")
     print(f"⏱️ Durée estimée totale: {total_duration_hours:.1f} heures")
 

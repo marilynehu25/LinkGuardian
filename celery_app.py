@@ -1,9 +1,11 @@
-"""Configuration Celery pour LinkGuardian - version Flask + RabbitMQ + Beat"""
+"""Configuration Celery pour LinkGuardian - version Flask + RabbitMQ + Beat
+Optimisé pour multi-workers et imports massifs
+"""
 
 import os
-
 from celery import Celery
 from celery.schedules import crontab
+from kombu import Queue
 
 broker_user = os.getenv("RABBITMQ_DEFAULT_USER")
 broker_pass = os.getenv("RABBITMQ_DEFAULT_PASS")
@@ -15,7 +17,9 @@ celery = Celery(
     backend="rpc://",
 )
 
-# Configuration commune
+# ============================================
+# 🎯 CONFIGURATION OPTIMISÉE MULTI-WORKERS
+# ============================================
 celery.conf.update(
     task_serializer="json",
     result_serializer="json",
@@ -23,27 +27,68 @@ celery.conf.update(
     timezone="Europe/Paris",
     enable_utc=True,
     imports=("tasks",),
+    
+    # ✅ Configuration pour multi-workers (IMPORTANT!)
     task_acks_late=True,
     task_reject_on_worker_lost=False,
-    worker_prefetch_multiplier=1,
+    worker_prefetch_multiplier=4,  # ⬆️ Permet de précharger 4 tâches par worker
     result_expires=3600,
     task_ignore_result=False,
+    
+    # ✅ Retry configuration
     task_autoretry_for=(Exception,),
     task_retry_backoff=True,
     task_retry_backoff_max=3600,
     task_max_retries=3,
     task_retry_jitter=True,
-    task_default_rate_limit="10/m",
+    
+    # ✅ Rate limits plus souples pour parallélisme
+    task_default_rate_limit="100/m",  # ⬆️ 100 tâches/minute au lieu de 10
     worker_disable_rate_limits=False,
+    
+    # ✅ Timeouts
     task_soft_time_limit=300,
     task_time_limit=360,
+    
+    # ✅ Priorités (pour gérer urgent vs standard)
+    task_default_priority=5,
+    task_inherit_parent_priority=True,
+    
     broker_transport_options={
         "visibility_timeout": 3600,
         "confirm_publish": True,
+        "priority_steps": [0, 3, 6, 9],  # 4 niveaux de priorité
     },
 )
 
-# ✅ Planificateur de tâches (beat)
+# ============================================
+# 📋 CONFIGURATION DES QUEUES AVEC PRIORITÉS
+# ============================================
+celery.conf.task_queues = (
+    # Queue URGENT : Vérifications manuelles/immédiates (priorité max)
+    Queue('urgent', routing_key='urgent', priority=9),
+    
+    # Queue STANDARD : Vérifications auto et imports massifs (priorité normale)
+    Queue('standard', routing_key='standard', priority=5),
+    
+    # Queue WEEKLY : Tâches hebdomadaires planifiées (priorité basse)
+    Queue('weekly', routing_key='weekly', priority=1),
+)
+
+celery.conf.task_default_queue = 'standard'
+celery.conf.task_default_exchange = 'tasks'
+celery.conf.task_default_routing_key = 'standard'
+
+# ✅ Routing automatique des tâches vers les bonnes queues
+celery.conf.task_routes = {
+    'tasks.check_single_site': {'queue': 'standard'},
+    'tasks.check_all_user_sites': {'queue': 'standard'},
+    'tasks.check_all_sites_weekly': {'queue': 'weekly'},
+}
+
+# ============================================
+# ⏰ PLANIFICATEUR DE TÂCHES (BEAT)
+# ============================================
 celery.conf.beat_schedule = {
     "check-all-sites-weekly": {
         "task": "tasks.check_all_sites_weekly",
@@ -101,5 +146,3 @@ def init_celery(app):
 # 🔥 IMPORTANT : Créer flask_app pour les workers
 flask_app = get_flask_app()
 init_celery(flask_app)
-
-#print("ℹ️ Celery initialisé avec contexte Flask pour les workers")

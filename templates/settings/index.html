@@ -1,5 +1,5 @@
 {% extends "_layout/base.html" %}
-{% from "_layout/components.html" import content_card, status_badge, alert %}
+{% from "_layout/components.html" import content_card, status_badge, alert, note_lecture %}
 
 {% block title %}Configuration - LinkGuardian{% endblock %}
 
@@ -48,7 +48,7 @@
                 </button>
                 -->
 
-                {% if current_user.role == "admin"  %}
+                {% if current_user.role == "main_admin" or current_user.role == "admin" %}
                     <button @click="setTab('admin')" 
                             :class="activeTab === 'admin' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'"
                             class="px-4 py-2 rounded-xl font-medium transition-all">
@@ -232,7 +232,7 @@
 
 
         <!-- Onglet Administrateur -->
-        {% if current_user.role == "admin"  %}
+        {% if current_user.role == "main_admin" or current_user.role == "admin"  %}
             <div x-show="activeTab === 'admin'" class="space-y-6">
                 {% include 'settings/_table_admin.html' %}
             </div>
@@ -299,64 +299,89 @@
         <!-- Onglet Compte -->
         <div x-show="activeTab === 'account'" class="space-y-6">
 
-            {% call content_card(title="Informations du compte") %}
-            <form action="{{ url_for('config_routes.edit_own_information') }}" 
-                method="POST" 
-                class="space-y-6">
+            {% call content_card(title="Profil et informations du compte") %}
 
-                <!-- Informations principales -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Nom -->
-                    <div>
-                        <label for="last_name" class="block text-sm font-medium text-gray-400 mb-2">
-                            Nom
-                        </label>
-                        <input type="text" 
-                            id="last_name"
-                            name="last_name"
-                            value="{{ current_user.last_name }}"
-                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white 
-                                    focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition">
-                    </div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                    <!-- Prénom -->
-                    <div>
-                        <label for="first_name" class="block text-sm font-medium text-gray-400 mb-2">
-                            Prénom
+                <!-- Colonne Avatar -->
+                <div class="flex flex-col items-center space-y-4">
+
+                    <form id="profile_form"
+                        action="{{ url_for('config_routes.update_profile_picture') }}"
+                        method="POST"
+                        enctype="multipart/form-data"
+                        class="flex flex-col items-center">
+
+                        <label for="profile_picture_input" class="group relative cursor-pointer">
+
+                            <img src="{{ url_for('static', filename='uploads/avatars/' + (current_user.profile_picture or 'default_avatar.png')) }}"
+                                id="profile_preview"
+                                class="w-40 h-40 rounded-full object-cover border border-gray-700 shadow group-hover:opacity-70 transition">
+
+                            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100
+                                        bg-black/40 rounded-full text-white text-sm font-medium transition">
+                                📸 Changer de photo
+                            </div>
                         </label>
-                        <input type="text" 
-                            id="first_name"
-                            name="first_name"
-                            value="{{ current_user.first_name }}"
-                            class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white 
-                                    focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition">
-                    </div>
+
+                        <input id="profile_picture_input"
+                            type="file"
+                            name="profile_picture"
+                            accept="image/*"
+                            class="hidden"
+                            onchange="autoUpload()">
+                    </form>
                 </div>
 
-                <!-- Email -->
-                <div>
-                    <label for="email" class="block text-sm font-medium text-gray-400 mb-2">
-                        Email
-                    </label>
-                    <input type="email" 
-                        id="email"
-                        name="email"
-                        value="{{ current_user.email }}"
-                        class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white 
-                                focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition">
+
+                <!-- Colonne Infos -->
+                <div class="lg:col-span-2">
+
+                    <form action="{{ url_for('config_routes.edit_own_information') }}" method="POST" class="space-y-4">
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-400 mb-1">Nom</label>
+                                <input type="text" name="last_name" value="{{ current_user.last_name }}"
+                                    class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-primary">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-400 mb-1">Prénom</label>
+                                <input type="text" name="first_name" value="{{ current_user.first_name }}"
+                                    class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-primary">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Email</label>
+                            <input type="email" name="email" value="{{ current_user.email }}"
+                                class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-primary">
+                        </div>
+
+                        <button type="submit" 
+                            class="mt-4 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium flex items-center gap-2 transition-all">
+                            💾 Sauvegarder
+                        </button>
+                    </form>
                 </div>
+            </div>
 
-                <!-- Bouton Sauvegarder -->
-                <button type="submit" 
-                    class="mt-4 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium flex items-center gap-2 transition-all">
-                    💾 Sauvegarder
-                </button>
+            <script>
+            function autoUpload() {
+                const input = document.getElementById("profile_picture_input");
+                const preview = document.getElementById("profile_preview");
 
-            </form>
+                if (input.files && input.files[0]) {
+                    preview.src = URL.createObjectURL(input.files[0]);
+                    document.getElementById("profile_form").submit();
+                }
+            }
+            </script>
+
             {% endcall %}
 
-
-            
             {% call content_card(title="Sécurité") %}
             <div class="space-y-4">
                 <h5 class="font-medium text-white mb-2">Changer le mot de passe</h5>

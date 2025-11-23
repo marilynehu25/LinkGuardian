@@ -52,6 +52,15 @@ Suivant la manière comment tu héberges le site, l'adresse URL d'accès peut ch
 - en local : http://127.0.0.1:5000/
 - sur un serveur d'adresse IP XX.XX.XX.XX (celui de Karavel, c'est 10.12.3.12 et il suffit juste de place le dossier entier dans un répertoire dédié. Pour finir, il faut suivre les indications ci-dessus.) : http://XX.XX.XX.XX:5000/ (pour Karavel, c'est donc : http://10.12.3.12:5000/).
 
+Dans ce cas, les données sont stckées sous PostgreSQL pour pouvour utiliser Docker. Si vous souhaiter cosulter la table des données, il faut s'authentifier sur le lien : http://localhost:8080/.
+
+Pour l'authentification, il faut saisir :
+- Système : **PostgreSQL**
+- Serveur : ```db_host``` (ici c'est **_postgres_**)
+- Utilisateur : ```db_user``` (ici c'est **_postgres_**)
+- Mot de passe : ```db_pass``` (ici c'est **_Karavel123#_**)
+- Base de données : ```db_name``` (ici c'est **_site_**)
+
 **!!! WARNING !!!** : Pour que l'application soit ouvert tout le monde, il faut que le serveur soit allumé en permanence et Docker Destop également.
 
 (Le README a été écrit avec une grande qualité rédactionnel négatif, si vous voyez des fautes, n'hésitez pas à ignorer !)

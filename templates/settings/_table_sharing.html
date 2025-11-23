@@ -1,6 +1,12 @@
 <!-- Onglet Partage -->
 <div x-show="activeTab === 'sharing'" class="space-y-6">
-    <h2 class="text-2xl font-bold text-white mb-4">Gestion des partages</h2>
+    <h2 class="text-2xl font-bold text-white mb-4">
+        Gestion des partages
+        {{ note_lecture(
+            "Les partages permettent à un utilisateur d'accéder aux données d'un autre utilisateur. Cependant en tant qu'administrateur principale, vous pouvez éditer ou supprimer n'importe quel partage.
+            En tant qu'administrateur standard, vous pouvez gérer les partages impliquant des utilisateurs simples. Les utilisateurs simples peuvent uniquement gérer les partages qu'ils ont créés vers d'autres utilisateurs simples, et seulement aux utilisateurs simples !",
+        )}}
+    </h2>
 
     <!-- Tableau avec défilement -->
     <div class="bg-gray-900 rounded-2xl overflow-hidden shadow-lg">
@@ -35,16 +41,34 @@
                         <td class="px-6 py-4 text-gray-400 whitespace-nowrap">
                             {{ share.created_at.strftime('%d/%m/%Y') }}
                         </td>
-                        <td class="px-6 py-4 text-right">
-                            <form method="POST"
-                                  action="{{ url_for('config_routes.delete_share', share_id=share.id) }}"
-                                  onsubmit="return confirm('Supprimer ce partage ?')">
-                                <button type="submit"
-                                        class="px-3 py-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-gray-800 transition-all">
-                                    Supprimer
-                                </button>
-                            </form>
-                        </td>
+
+                        {% if (share.owner.role!="main_admin" or share.grantee.role!="main_admin" 
+                        or share.owner.id == current_user.id or share.grantee.id == current_user.id)
+                        and current_user.role in ["admin"] %}
+                            <td class="px-6 py-4 text-right">
+                                <form method="POST"
+                                    action="{{ url_for('config_routes.delete_share', share_id=share.id) }}"
+                                    onsubmit="return confirm('Supprimer ce partage ?')">
+                                    <button type="submit"
+                                            class="px-3 py-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-gray-800 transition-all">
+                                        Supprimer
+                                    </button>
+                                </form>
+                            </td>
+
+                        {% elif current_user.role in ["user"] and (share.owner.id == current_user.id 
+                        and share.grantee.role=='user')%}
+                            <td class="px-6 py-4 text-right">
+                                <form method="POST"
+                                    action="{{ url_for('config_routes.delete_share', share_id=share.id) }}"
+                                    onsubmit="return confirm('Supprimer ce partage ?')">
+                                    <button type="submit"
+                                            class="px-3 py-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-gray-800 transition-all">
+                                        Supprimer
+                                    </button>
+                                </form>
+                            </td>
+                        {% endif %}
                     </tr>
                     {% else %}
                     <tr>
@@ -70,24 +94,31 @@
             "
             class="flex flex-col md:flex-row gap-4 items-center">
 
-            {% if current_user.role == "admin" %}
+            {% if current_user.role in ["admin", "main_admin"] %}
                 <!-- 🧭 Admin ou Super-Admin : peut choisir le propriétaire -->
                 <select name="owner_id"
                         x-model="owner"
                         required
                         class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    
                     <option value="">Propriétaire des données…</option>
 
-                    {% for user in users %}
-                        {% if current_user.id == 1 %}
-                            {# 👑 Super-admin : voit tout le monde #}
+                    {% if current_user.role == "main_admin" %}
+                        {# 👑 Super-admin : voit tout le monde #}
+                        {% for user in users %}
                             <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
-                        {% elif user.role == "user" %}
-                            {# 🔒 Admin normal : ne voit que les users simples #}
-                            <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
-                        {% endif %}
-                    {% endfor %}
+                        {% endfor %}
+                    
+                    {% elif current_user.role == "admin" %}
+                        {# 🔒 Admin normal : ne voit que les utilisateurs simples #}
+                        {% for user in users %}
+                            {% if user.role == "user" %}
+                                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
                 </select>
+
             {% else %}
                 {# 🔹 Utilisateur simple : propriétaire = lui-même #}
                 <input type="hidden" name="owner_id" value="{{ current_user.id }}">

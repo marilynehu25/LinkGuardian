@@ -83,6 +83,7 @@
         }
     </style>
 </head>
+
 <body class="min-h-screen transition-colors overflow-x-hidden" 
       x-data="{ 
         sidebarOpen: false, 
@@ -98,22 +99,25 @@
     <!-- Navigation Top Bar -->
     <nav class="bg-gray-900 border-b border-gray-700 px-4 py-3 fixed top-0 left-0 right-0 z-50">
         <div class="flex items-center justify-between">
+
             <div class="flex items-center space-x-4">
                 <!-- Sidebar Toggle -->
                 {% if current_user.is_authenticated %}
                 <button @click="sidebarOpen = !sidebarOpen" class="text-gray-400 hover:text-white">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16"></path>
                     </svg>
                 </button>
                 {% endif %}
-                <!-- Logo -->
-                <div class="flex items-center space-x-2">
+
+                <!-- Logo CLIQUABLE -->
+                <a href="/" class="flex items-center space-x-2 hover:opacity-80 transition">
                     <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="w-8 h-8">
                     <h1 class="text-xl font-bold text-white">LinkGuardian</h1>
-                </div>
+                </a>
             </div>
-            
+     
             <!-- Top Actions -->
             <div class="flex items-center space-x-4">
 
@@ -160,11 +164,11 @@
 
                     <button @click="open = !open" 
                             class="flex items-center space-x-3 text-gray-400 hover:text-white transition-colors">
-                        <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
-                            </svg>
-                        </div>
+                        <!-- Avatar utilisateur -->
+                        <img src="{{ url_for('static', filename='uploads/avatars/' + (current_user.profile_picture or 'default_avatar.png')) }}"
+                            alt="Avatar"
+                            class="w-8 h-8 rounded-full object-cover border border-gray-600 shadow">
+
                         <span>{{ current_user.first_name }} {{ current_user.last_name }}</span>
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -173,13 +177,14 @@
                     
                     <!-- Dropdown -->
                     <div x-show="open" @click.away="open = false" x-transition class="absolute right-0 mt-2 w-48 bg-gray-800 rounded-xl shadow-lg py-2 z-50">
-                        {% if current_user.role == "admin"  %}
+                        {% if current_user.role in ['admin', 'main_admin']  %}
                         <a href="/configuration?tab=admin" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Adminitrateur</a>
                         {% endif %}
                         <a href="/configuration" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Configuration</a>
                         <a href="/logout" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Déconnexion</a>
                     </div>
                 </div>
+
             {% endif %}
             
         </div>

@@ -14,11 +14,10 @@ from serpapi import GoogleSearch
 # librairie SQLAlchemy
 # à partir du fichier python database.py
 from database import db
-from models import Website
+from models import Website, Configuration
 from services.api_babbar import fetch_url_data
 from services.utils_service import check_anchor_presence
 
-SECONDS_BETWEEN_REQUESTS = 150  # temps d'attente entre les requêtes
 
 SEMAPHORE_BABBAR = Semaphore(
     10
@@ -29,6 +28,14 @@ SEMAPHORE_YOURTEXTGURU = Semaphore(
 )  # Limiter le nombre de requêtes simultanées à l'API YourTextGuru
 request_counter = 0  # Compteur de requêtes effectuées
 AIOHTTP_TIMEOUT = ClientTimeout(total=30)  # Timeout total pour les requêtes aiohttp
+
+def get_babbar_key():
+    config = Configuration.query.first()
+    return config.babbar_api_key if config else None
+
+def get_serpapi_key():
+    config = Configuration.query.first()
+    return config.serpapi_key if config else None
 
 
 async def fetch_status(session, url):
@@ -218,7 +225,7 @@ def perform_check_status(site_id):
                 "engine": "google",
                 "q": f"site:{site.url}",
                 "location": "France",
-                "api_key": "2d616e924f3b0d90bdcecdae5de3ab32605022360f9598b9c6d25e5a0ed80db5",
+                "api_key": get_serpapi_key,
             }
             search = GoogleSearch(params)
             results = search.get_dict()
@@ -272,7 +279,7 @@ async def check_and_update_website_data(session, website):
                 json={"url": website.url},
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer lrU6gM7ev17v45DTS45dqznlEVvoapsNIotq5aQMeusGOtemdrWlqcpkIIMv",
+                    "Authorization": "Bearer " + get_babbar_key(),
                 },
             )
 

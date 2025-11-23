@@ -26,6 +26,7 @@ def signup():
         return redirect(url_for("main_routes.index"))
 
     if request.method == "POST":
+
         username = request.form.get("email")
         password = request.form.get("password")
         confirm_password = request.form.get("confirm_password")
@@ -33,36 +34,47 @@ def signup():
         last_name = request.form.get("last_name")
         email = request.form.get("email")
 
+        # 🔐 Vérification : mots de passe identiques
         if password != confirm_password:
-            flash("Les mots de passe ne correspondent pas.")
+            flash("Les mots de passe ne correspondent pas.", "error")
             return redirect(url_for("auth_routes.signup"))
 
-        # Vérifier si nom d’utilisateur ou email déjà utilisés
+        # 🔎 Vérification : email déjà utilisé ?
         existing_user = User.query.filter(
             (User.username == username) | (User.email == email)
         ).first()
+
         if existing_user:
-            flash("Ce nom d’utilisateur ou email existe déjà.")
+            flash("Ce nom d’utilisateur ou cet email existe déjà.", "error")
             return redirect(url_for("auth_routes.signup"))
 
-        new_user = User(
-            username=username, first_name=first_name, last_name=last_name, email=email
-        )
-        new_user.set_password(password)
+        # 🧪 Tentative de création de l'utilisateur
+        try:
+            new_user = User(
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                email=email
+            )
+            new_user.set_password(password)
 
-        # Si c’est le premier utilisateur → admin
-        if User.query.count()<2:
-            new_user.role = "admin"
-        else:
-            new_user.role = "user"
+            # 🎩 Premier utilisateur → main_admin
+            new_user.role = "main_admin" if User.query.count() == 0 else "user"
 
-        db.session.add(new_user)
-        db.session.commit()
+            db.session.add(new_user)
+            db.session.commit()
 
-        flash("Inscription réussie.")
-        return redirect(url_for("auth_routes.login"))
+            flash("Inscription réussie ! Vous pouvez maintenant vous connecter.", "success")
+            return redirect(url_for("auth_routes.login"))
 
+        except Exception as e:
+            db.session.rollback()
+            flash("Une erreur inattendue est survenue. Veuillez réessayer.", "error")
+            return redirect(url_for("auth_routes.signup"))
+
+    # GET → aucun message d’erreur n’est affiché
     return render_template("access_account/signup.html")
+
 
 
 # gère l'authentification des utilisateurs en vérifiant si un utilisateur est déjà connecté, en traitant les soumissions de formulaires pour vérifier les informations d'identification,

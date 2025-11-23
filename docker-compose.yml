@@ -19,7 +19,7 @@ services:
       PYTHONUNBUFFERED: 1          # ← AJOUTER CECI
       WATCHDOG_POLLING: "true"     # ← ET CECI pour améliorer le hot-reload
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_PASSWORD: Karavel123#
       POSTGRES_DB: site
       DB_HOST: postgres
       DB_PORT: 5432
@@ -40,7 +40,7 @@ services:
       - rabbitmq
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_PASSWORD: Karavel123#
       POSTGRES_DB: site
       DB_HOST: postgres
       DB_PORT: 5432
@@ -61,7 +61,7 @@ services:
       - rabbitmq
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_PASSWORD: Karavel123#
       POSTGRES_DB: site
       DB_HOST: postgres
       DB_PORT: 5432
@@ -82,7 +82,7 @@ services:
       - rabbitmq
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_PASSWORD: Karavel123#
       POSTGRES_DB: site
       DB_HOST: postgres
       DB_PORT: 5432
@@ -102,7 +102,7 @@ services:
       - rabbitmq
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_PASSWORD: Karavel123#
       POSTGRES_DB: site
       DB_HOST: postgres
       DB_PORT: 5432
@@ -139,7 +139,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 25082001Ma#
+      POSTGRES_PASSWORD: Karavel123#
       POSTGRES_DB: site
     ports:
       - "5432:5432"

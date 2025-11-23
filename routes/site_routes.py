@@ -17,6 +17,7 @@ from flask import (
     url_for,
     abort ,
 )
+from sqlalchemy import func
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -27,7 +28,7 @@ from flask import request, abort
 from math import ceil
 # à partir du fichier python database.py
 from database import db
-from models import Source, Website, User, UserAccess
+from models import Source, Website, User, UserAccess, Tag
 from services.api_babbar import fetch_url_data
 from services.check_service import (
     check_link_presence_and_follow_status,
@@ -35,6 +36,7 @@ from services.check_service import (
 )
 from services.stats_service import save_stats_snapshot
 from services.utils_service import check_anchor_presence
+from services.tag_services import add_tag
 
 
 # ✅ SUPPRIMÉ : Plus besoin de Redis avec RabbitMQ
@@ -290,7 +292,7 @@ def delete_all_sites():
         print(f"⚠️ Impossible de purger Celery: {e}")
 
     # Suppression des sites
-    Website.query.delete()
+    Website.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
     flash("✅ Tous les sites ont été supprimés avec succès.", "success")
     return redirect(url_for("backlinks_routes.backlinks_list"))
@@ -358,14 +360,14 @@ def import_data():
 
             for _, row in df.iterrows():
                 url = str(row.get("url", "")).strip()
+                if not url:
+                    continue
+
                 domain = extract_domain(url)
                 tag = str(row.get("tag", "")).lower().strip()
                 source_plateforme = str(row.get("plateforme", "")).strip()
                 link_to_check = str(row.get("link_to_check", "")).strip()
                 anchor_text = str(row.get("anchor_text", "")).strip()
-
-                if not url:
-                    continue  # saute les lignes vides
 
                 # Vérifie si le couple (url, link_to_check) existe déjà
                 existing_site = Website.query.filter_by(
@@ -381,10 +383,10 @@ def import_data():
                     )
                     existing_site.anchor_text = anchor_text or existing_site.anchor_text
                     existing_site.last_checked = datetime.now()
-                    websites_to_check.append(
-                        existing_site
-                    )  # 🔧 Ajouter à la liste de vérification
+
+                    websites_to_check.append(existing_site)
                     print(f"🔁 Site mis à jour : {url}")
+
                 else:
                     # 🆕 Nouveau site
                     new_site = Website(
@@ -398,34 +400,36 @@ def import_data():
                         first_checked=datetime.now(),
                     )
                     db.session.add(new_site)
-                    websites_to_check.append(
-                        new_site
-                    )  # 🔧 Ajouter à la liste de vérification
+                    websites_to_check.append(new_site)
                     print(f"✅ Site ajouté : {url}")
 
-                    db.session.commit()
+            # 🟢 Commit une seule fois ici (important)
+            db.session.commit()
+            print(f"💾 Commit effectué ({len(websites_to_check)} sites)")
 
-                    if websites_to_check:
-                        from tasks import check_single_site
-                        
-                        task_ids = []
-                        for website in websites_to_check:  # ← Uniquement les NOUVEAUX sites
-                            task = check_single_site.apply_async(
-                                args=[website.id],
-                                queue='standard',
-                                priority=3,
-                            )
-                            task_ids.append(task.id)
+            # 🟢 Lancement des tâches CELERY après le commit
+            if websites_to_check:
+                from tasks import check_single_site
+
+                task_ids = []
+                for website in websites_to_check:
+                    task = check_single_site.apply_async(
+                        args=[website.id],
+                        queue='standard',
+                        priority=3,
+                    )
+                    task_ids.append(task.id)
+
+                print(f"🚀 {len(task_ids)} tâches Celery envoyées")
 
         except Exception as e:
             db.session.rollback()
             print(f"❌ Erreur lors de l'import : {e}")
             flash("Une erreur est survenue lors de l'import.", "error")
 
-        # 🧠 Ici, au lieu d'afficher import.html, on renvoie directement le tableau
+        # 🧠 On ne change rien à ce que tu fais ici
         websites = Website.query.filter_by(user_id=current_user.id).all()
 
-        # Calculer les statistiques
         total = len(websites)
         follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
         indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")
@@ -442,13 +446,10 @@ def import_data():
 
         return redirect(request.referrer or url_for("backlinks_routes.backlinks_list"))
 
-
-    # 🚫 En GET, on ne veut plus afficher import.html non plus
-    # On renvoie directement la table au lieu du formulaire
+    # 🚫 GET → on laisse comme tu avais
     websites = Website.query.filter_by(user_id=current_user.id).all()
     sources = Source.query.all()
 
-    # Calculer les statistiques
     total = len(websites)
     follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
     indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")

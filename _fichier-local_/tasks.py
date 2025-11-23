@@ -10,9 +10,9 @@ from services.api_babbar import fetch_url_data
 
 # 🔧 CONFIGURATION DES LIMITES D'API
 API_RATE_LIMITS = {
-    "babbar": {"calls_per_minute": 10, "retry_after": 60},
-    "google": {"calls_per_minute": 20, "retry_after": 30},
-    "default": {"calls_per_minute": 10, "retry_after": 60},
+    "babbar": {"calls_per_minute": 30, "retry_after": 60},
+    "google": {"calls_per_minute": 30, "retry_after": 60},
+    "default": {"calls_per_minute": 30, "retry_after": 60},
 }
 
 

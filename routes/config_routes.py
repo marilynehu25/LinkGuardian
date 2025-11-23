@@ -18,6 +18,7 @@ import requests
 from datetime import datetime
 from sqlalchemy.orm import joinedload
 from models import UserAccess
+from sqlalchemy import or_
 
 config_bp = Blueprint("config_routes", __name__)
 
@@ -26,11 +27,11 @@ config_bp = Blueprint("config_routes", __name__)
 # 🔧 DÉCORATEUR ADMIN
 # ============================================================
 def admin_required(f):
-    """Décorateur pour vérifier que l'utilisateur est un administrateur"""
+    """Vérifie que l'utilisateur est admin OU main_admin"""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != "admin":
+        if not current_user.is_authenticated or current_user.role not in ["admin", "main_admin"]:
             abort(403)
         return f(*args, **kwargs)
 
@@ -70,10 +71,9 @@ def configuration():
     # ==============================
     # 👥 Données de partage
     # ==============================
-    from models import UserAccess
-    from sqlalchemy.orm import joinedload
 
-    if current_user.role == "admin":
+    if current_user.role in ["admin", "main_admin"]:
+        # 🔥 Admin & super admin → voient tout
         shares = (
             UserAccess.query
             .options(joinedload(UserAccess.owner), joinedload(UserAccess.grantee))
@@ -81,10 +81,16 @@ def configuration():
             .all()
         )
     else:
+        # 🔒 User normal → voit seulement les partages qui le concernent
         shares = (
             UserAccess.query
             .options(joinedload(UserAccess.owner), joinedload(UserAccess.grantee))
-            .filter_by(owner_id=current_user.id)
+            .filter(
+                or_(
+                    UserAccess.owner_id == current_user.id,
+                    UserAccess.grantee_id == current_user.id
+                )
+            )
             .order_by(UserAccess.created_at.desc())
             .all()
         )
@@ -160,12 +166,12 @@ def add_user():
         # Vérifier si l'username existe déjà
         if User.query.filter_by(username=username).first():
             flash(f"Le nom d'utilisateur '{username}' existe déjà.", "error")
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Vérifier si l'email existe déjà
         if User.query.filter_by(email=email).first():
             flash(f"L'adresse email '{email}' est déjà utilisée.", "error")
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Créer le nouvel utilisateur
         new_user = User(
@@ -191,7 +197,7 @@ def add_user():
         db.session.rollback()
         flash(f"Erreur lors de la création de l'utilisateur : {str(e)}", "error")
 
-    return redirect(url_for("config_routes.admin"))
+    return redirect(url_for("config_routes.configuration", tab="admin"))
 
 
 @config_bp.route(
@@ -215,13 +221,13 @@ def edit_user(user_id):
         existing_user = User.query.filter_by(username=username).first()
         if existing_user and existing_user.id != user_id:
             flash(f"Le nom d'utilisateur '{username}' existe déjà.", "error")
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Vérifier si l'email existe déjà (sauf pour l'utilisateur actuel)
         existing_email = User.query.filter_by(email=email).first()
         if existing_email and existing_email.id != user_id:
             flash(f"L'adresse email '{email}' est déjà utilisée.", "error")
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Empêcher un admin de se retirer ses propres droits admin
         if user_id == current_user.id and role != "admin":
@@ -229,7 +235,7 @@ def edit_user(user_id):
                 "Vous ne pouvez pas retirer vos propres droits d'administrateur.",
                 "error",
             )
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Mettre à jour les données
         user.first_name = first_name
@@ -249,7 +255,39 @@ def edit_user(user_id):
         db.session.rollback()
         flash(f"Erreur lors de la modification de l'utilisateur : {str(e)}", "error")
 
-    return redirect(url_for("config_routes.admin"))
+    return redirect(url_for("config_routes.configuration", tab="admin"))
+
+@config_bp.route("/configuration/update-profile-picture", methods=["POST"])
+@login_required
+def update_profile_picture():
+    file = request.files.get("profile_picture")
+
+    if not file:
+        flash("Aucune image sélectionnée.", "error")
+        return redirect(url_for("config_routes.configuration", tab="account"))
+
+    # Vérification du type de fichier
+    if not file.mimetype.startswith("image/"):
+        flash("Le fichier doit être une image.", "error")
+        return redirect(url_for("config_routes.configuration", tab="account"))
+
+    import os
+    upload_folder = "static/uploads/avatars/"
+    os.makedirs(upload_folder, exist_ok=True)
+
+    # Nom unique : user_XX.png
+    filename = f"user_{current_user.id}.png"
+    filepath = os.path.join(upload_folder, filename)
+
+    # Sauvegarde sur le disque
+    file.save(filepath)
+
+    # Mise à jour DB
+    current_user.profile_picture = filename
+    db.session.commit()
+
+    flash("Photo mise à jour !", "success")
+    return redirect(url_for("config_routes.configuration", tab='account'))
 
 
 @config_bp.route(
@@ -267,7 +305,7 @@ def change_user_password(user_id):
 
         if not new_password or len(new_password) < 6:
             flash("Le mot de passe doit contenir au moins 6 caractères.", "error")
-            return redirect(url_for("config_routes.admin"))
+            return redirect(url_for("config_routes.configuration", tab="admin"))
 
         # Changer le mot de passe
         user.set_password(new_password)
@@ -282,16 +320,13 @@ def change_user_password(user_id):
         db.session.rollback()
         flash(f"Erreur lors du changement de mot de passe : {str(e)}", "error")
 
-    return redirect(url_for("config_routes.admin"))
+    return redirect(url_for("config_routes.configuration", tab="admin"))
 
 
-@config_bp.route(
-    "/configuration/administrateur/user/<int:user_id>/delete", methods=["POST"]
-)
+@config_bp.route("/configuration/administrateur/user/<int:user_id>/delete", methods=["POST"])
 @login_required
 @admin_required
 def delete_user(user_id):
-    """Supprimer un utilisateur"""
     try:
         user = User.query.get_or_404(user_id)
 
@@ -300,14 +335,18 @@ def delete_user(user_id):
             flash("Vous ne pouvez pas supprimer votre propre compte.", "error")
             return redirect(url_for("config_routes.configuration", tab="admin"))
 
-        # Stocker le nom pour le message
-        user_name = f"{user.first_name} {user.last_name}"
+        # 1️⃣ Supprimer tous les partages liés à cet utilisateur
+        UserAccess.query.filter(
+            (UserAccess.owner_id == user_id) |
+            (UserAccess.grantee_id == user_id) |
+            (UserAccess.granted_by == user_id)
+        ).delete(synchronize_session=False)
 
-        # Supprimer l'utilisateur (les sites associés seront supprimés en cascade si configuré)
+        # 2️⃣ Supprimer l'utilisateur
         db.session.delete(user)
         db.session.commit()
 
-        flash(f"L'utilisateur {user_name} a été supprimé avec succès.", "success")
+        flash(f"L'utilisateur {user.first_name} {user.last_name} a été supprimé avec succès.", "success")
 
     except Exception as e:
         db.session.rollback()
@@ -315,8 +354,6 @@ def delete_user(user_id):
     
     return redirect(url_for("config_routes.configuration", tab="admin"))
 
-
-# À ajouter dans config_routes.py
 
 
 @config_bp.route("/configuration/change-password", methods=["POST"])
@@ -577,7 +614,7 @@ def add_share():
         return redirect(url_for("config_routes.configuration", tab="sharing"))
 
     # Vérifier les droits
-    if current_user.role != "admin":
+    if current_user.role not in ["admin", "main_admin"]:
         # Un utilisateur normal ne peut partager que ses propres données
         owner_id = current_user.id
 
@@ -616,7 +653,7 @@ def delete_share(share_id):
     share = UserAccess.query.get_or_404(share_id)
 
     # Super-admin peut tout supprimer
-    if current_user.id == 1:
+    if current_user.role == "main_admin":
         pass  # Autorisé
     # Admin peut supprimer les partages des users simples
     elif current_user.role == "admin":

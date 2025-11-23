@@ -1,19 +1,12 @@
 import asyncio
 from datetime import datetime
-from functools import wraps
+
 from aiohttp import ClientError, ClientSession
 
 # Importer Celery depuis le fichier dédié
 from celery_app import celery
 from models import User, Website, db
 from services.api_babbar import fetch_url_data
-
-# 🔧 CONFIGURATION DES LIMITES D'API
-API_RATE_LIMITS = {
-    "babbar": {"calls_per_minute": 10, "retry_after": 60},
-    "google": {"calls_per_minute": 20, "retry_after": 30},
-    "default": {"calls_per_minute": 10, "retry_after": 60},
-}
 
 
 class APIRateLimitError(Exception):
@@ -29,7 +22,7 @@ class APIRateLimitError(Exception):
 
 async def process_site_async(site_id):
     """Traite la vérification d'un site de manière asynchrone
-    
+
     ⚠️ Cette fonction doit être appelée depuis un contexte Flask (tâche Celery)
     pour avoir accès à db.session
     """
@@ -127,7 +120,7 @@ async def process_site_async(site_id):
     bind=True,
     max_retries=5,
     default_retry_delay=60,
-    rate_limit="50/m",  # ⬆️ Augmenté pour parallélisme
+    rate_limit="10/m",  # ⬆️ Augmenté pour parallélisme
     autoretry_for=(APIRateLimitError, ClientError),
     retry_backoff=True,
     retry_backoff_max=600,
@@ -135,7 +128,7 @@ async def process_site_async(site_id):
 )
 def check_single_site(self, site_id, urgent=False):
     """Vérifie un seul site avec gestion intelligente des retries
-    
+
     Args:
         site_id: ID du site à vérifier
         urgent: Si True, la tâche sera routée vers la queue 'urgent' (priorité haute)
@@ -143,8 +136,8 @@ def check_single_site(self, site_id, urgent=False):
     try:
         # 🚀 Routing dynamique vers queue urgent si demandé
         if urgent and self.request.delivery_info:
-            self.request.delivery_info['priority'] = 9
-            
+            self.request.delivery_info["priority"] = 9
+
         print(f"🔍 Vérification du site ID: {site_id} {'[URGENT]' if urgent else ''}")
 
         site = Website.query.get(site_id)
@@ -191,10 +184,10 @@ def check_single_site(self, site_id, urgent=False):
 )
 def check_all_user_sites(user_id, urgent=False):
     """Vérifie tous les sites d'un utilisateur
-    
+
     🚀 OPTIMISATION: Les tâches sont lancées sans countdown.
     Les workers multiples se répartissent automatiquement la charge.
-    
+
     Args:
         user_id: ID de l'utilisateur
         urgent: Si True, les vérifications seront prioritaires
@@ -229,8 +222,8 @@ def check_all_user_sites(user_id, urgent=False):
         # Le système de queues et les multiples workers géreront la distribution
         task = check_single_site.apply_async(
             args=[site.id],
-            kwargs={'urgent': urgent},
-            queue='urgent' if urgent else 'standard',  # Routing vers bonne queue
+            kwargs={"urgent": urgent},
+            queue="urgent" if urgent else "standard",  # Routing vers bonne queue
             priority=9 if urgent else 5,  # Priorité explicite
         )
         task_ids.append(task.id)
@@ -241,9 +234,10 @@ def check_all_user_sites(user_id, urgent=False):
 
     print(f"✅ {len(task_ids)} tâches lancées ({skipped} sites ignorés).")
     print(f"🔥 Mode: {'URGENT (priorité haute)' if urgent else 'STANDARD'}")
-    
+
     # Snapshot des stats
     from services.stats_service import save_stats_snapshot
+
     save_stats_snapshot(user_id)
 
     return {
@@ -259,7 +253,7 @@ def check_all_user_sites(user_id, urgent=False):
 @celery.task(name="tasks.check_all_sites_weekly")
 def check_all_sites_weekly():
     """Vérification hebdomadaire automatique
-    
+
     🎯 OPTIMISATION: Espacement entre utilisateurs réduit de 30min à 5min
     Les workers multiples peuvent gérer plusieurs utilisateurs simultanément
     """
@@ -275,12 +269,14 @@ def check_all_sites_weekly():
     for i, user in enumerate(users):
         countdown = i * 300  # 300s = 5 minutes (au lieu de 30)
 
-        print(f"📅 Vérification user {user.id} planifiée dans {countdown / 60:.0f} minutes")
+        print(
+            f"📅 Vérification user {user.id} planifiée dans {countdown / 60:.0f} minutes"
+        )
 
         check_all_user_sites.apply_async(
             args=[user.id],
             countdown=countdown,
-            queue='weekly',  # Queue dédiée basse priorité
+            queue="weekly",  # Queue dédiée basse priorité
         )
 
     total_duration_hours = (total_users * 5) / 60

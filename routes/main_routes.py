@@ -484,11 +484,7 @@ def index():
 
     # Timestamp pour éviter le cache des graphiques
     timestamp = int(datetime.now().timestamp())
-
-    print(f"DEBUG - kpis: {kpis}")
-    print(f"DEBUG - type de kpis: {type(kpis)}")
-    print(f"DEBUG - kpis est None?: {kpis is None}")
-
+    
     return render_template(
         "dashboard/index.html",
         kpis=kpis,

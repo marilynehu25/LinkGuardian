@@ -90,56 +90,37 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
 
     password_hash = db.Column(db.String(200), nullable=False)
-    # Ajouter ce champs pour le role : 'admin' = administrateur
-    #                                 'user' = utilisateur simple
     role = db.Column(db.String(50), default="user")
+    profile_picture = db.Column(db.String(255), nullable=True, default="default_avatar.png")
 
+    # Relations explicites
     shares_as_owner = db.relationship(
         "UserAccess",
         foreign_keys="[UserAccess.owner_id]",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        back_populates="owner",
+        overlaps="shared_with"
     )
+
     shares_as_grantee = db.relationship(
         "UserAccess",
         foreign_keys="[UserAccess.grantee_id]",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        back_populates="grantee",
+        overlaps="access_to"
     )
 
-
     def set_password(self, password):
-        """Fonction permettant de hasher le mot de passe, éviter que quand
-        la base de données est piratée, le mot de passe soit en clair.
-        Par exemple si le mot de passe est "azerty", le hash sera "$pbkdf2-sha256$29000$wI1r7m"
-
-        Args:
-            password (str): le mot de passe en clair
-        """
-
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        """Fonction qui sert à vérifier si le mot de passe en clair saisie
-        (qui est chiffré après) et bien en accord avec le mot de passe hashé stockée.
-
-        Args:
-            password (str): le mot de passe en clair
-
-        Returns:
-            bool: Retourne True si le mot de passe est correct, False sinon.
-        """
-
         return check_password_hash(self.password_hash, password)
 
     def __repr__(self):
         return f"<User {self.username} ({self.email})>"
 
+
 class UserAccess(db.Model):
-    """
-    Table permettant de gérer les droits de partage entre utilisateurs.
-    - owner_id : l'utilisateur dont les données sont partagées
-    - grantee_id : l'utilisateur autorisé à consulter les données
-    - granted_by : l'admin qui a accordé le droit (facultatif)
-    """
     id = db.Column(db.Integer, primary_key=True)
 
     owner_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
@@ -148,9 +129,21 @@ class UserAccess(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.now)
 
-    # Relations pratiques
-    owner = db.relationship("User", foreign_keys=[owner_id], backref="shared_with")
-    grantee = db.relationship("User", foreign_keys=[grantee_id], backref="access_to")
+    # Relations explicites + suppression du backref
+    owner = db.relationship(
+        "User",
+        foreign_keys=[owner_id],
+        back_populates="shares_as_owner",
+        overlaps="shared_with"
+    )
+
+    grantee = db.relationship(
+        "User",
+        foreign_keys=[grantee_id],
+        back_populates="shares_as_grantee",
+        overlaps="access_to"
+    )
+
     admin = db.relationship("User", foreign_keys=[granted_by])
 
     __table_args__ = (
@@ -159,6 +152,7 @@ class UserAccess(db.Model):
 
     def __repr__(self):
         return f"<UserAccess owner={self.owner_id} → grantee={self.grantee_id}>"
+
 
 
 # Nouvelle classe pour les tags

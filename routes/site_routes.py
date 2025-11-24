@@ -3,32 +3,31 @@
 # --- Librairies Python standards ---
 from datetime import datetime
 from io import BytesIO
+from math import ceil
 from urllib.parse import urlparse
 
 import pandas as pd
 import requests
 from flask import (
     Blueprint,
+    abort,
     flash,
     redirect,
     render_template,
     request,
     send_file,
     url_for,
-    abort ,
 )
-from sqlalchemy import func
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import joinedload
-from services.access_service import user_can_access_data
-from flask import request, abort
-from math import ceil
+
 # à partir du fichier python database.py
 from database import db
-from models import Source, Website, User, UserAccess, Tag
+from models import Source, User, UserAccess, Website, TaskRecord
+from services.access_service import user_can_access_data
 from services.api_babbar import fetch_url_data
 from services.check_service import (
     check_link_presence_and_follow_status,
@@ -36,11 +35,6 @@ from services.check_service import (
 )
 from services.stats_service import save_stats_snapshot
 from services.utils_service import check_anchor_presence
-from services.tag_services import add_tag
-
-
-# ✅ SUPPRIMÉ : Plus besoin de Redis avec RabbitMQ
-# r = Redis.from_url("redis://localhost:6379/0")
 
 sites_routes = Blueprint("sites_routes", __name__)
 
@@ -188,7 +182,7 @@ def add_site():
             """,
                 500,
             )
-    
+
     db.session.refresh(new_site)
     save_stats_snapshot(current_user.id)
     flash("✅ Site ajouté et vérifié avec succès !", "success")
@@ -204,9 +198,9 @@ def delete_site(site_id):
     if not site_to_delete:
         print("❌ Site non trouvé :", site_id)
         return "Site non trouvé", 404
-    
+
     if not user_can_access_data(current_user.id, site_to_delete.user_id):
-       abort(403)
+        abort(403)
 
     try:
         print(f"🗑️ Suppression du site ID {site_id} → {site_to_delete.url}")
@@ -282,18 +276,17 @@ def check_status(site_id):
 # cette fonction sert à Supprimer tous les sites de la base de données
 @sites_routes.route("/delete_all_sites", methods=["POST"])
 def delete_all_sites():
-    # 🔧 AUTOMATIQUE : Nettoyer Celery avant de supprimer les sites
-    try:
-        from celery_app import celery
+    from celery_app import celery
+    records = TaskRecord.query.filter_by(user_id=current_user.id).all()
+    for r in records:
+        celery.control.revoke(r.task_id, terminate=True)
 
-        celery.control.purge()  # Vide toutes les tâches en attente
-        print("✅ Tâches Celery purgées automatiquement")
-    except Exception as e:
-        print(f"⚠️ Impossible de purger Celery: {e}")
-
-    # Suppression des sites
+    TaskRecord.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
+    
     Website.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
+
     flash("✅ Tous les sites ont été supprimés avec succès.", "success")
     return redirect(url_for("backlinks_routes.backlinks_list"))
 
@@ -302,43 +295,40 @@ def delete_all_sites():
 @sites_routes.route("/check_all_sites", methods=["POST"])
 @login_required
 def check_all_sites():
-    """Version avec debug pour identifier le problème"""
-    
     print("=" * 60)
     print("🔍 [DEBUG] check_all_sites() appelée")
     print(f"🔍 [DEBUG] User ID: {current_user.id}")
     print(f"🔍 [DEBUG] Request method: {request.method}")
     print(f"🔍 [DEBUG] Headers: {dict(request.headers)}")
     print("=" * 60)
-    
+
     try:
         print("🔍 [DEBUG] Tentative d'import de check_all_user_sites...")
         from tasks import check_all_user_sites
+
         print("✅ [DEBUG] Import réussi")
-        
+
         print("🔍 [DEBUG] Tentative de lancement de la tâche...")
         result = check_all_user_sites.delay(current_user.id)
         print(f"✅ [DEBUG] Tâche lancée avec ID: {result.id}")
-        
+
+        # 🟢 ENREGISTRER LE TASK ID POUR LA PURGE PERSONNALISÉE
+        record = TaskRecord(task_id=result.id, user_id=current_user.id)
+        db.session.add(record)
+        db.session.commit()
+        print(f"🟢 [DEBUG] TaskRecord sauvegardé : {result.id}")
+
         flash("🚀 Vérification globale lancée en arrière-plan !", "success")
-        
-    except ImportError as e:
-        print(f"❌ [DEBUG] Erreur d'import: {e}")
-        flash(f"❌ Erreur d'import : {e}", "danger")
-        
-    except AttributeError as e:
-        print(f"❌ [DEBUG] Erreur d'attribut: {e}")
-        flash(f"❌ Erreur : {e}", "danger")
-        
+
     except Exception as e:
         print(f"❌ [DEBUG] Erreur générale: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         flash(f"❌ Erreur : {e}", "danger")
-    
+
     print("🔍 [DEBUG] Fin de la fonction, redirection...")
     print("=" * 60)
-    
+
     return redirect(url_for("backlinks_routes.backlinks_list"))
 
 
@@ -348,123 +338,98 @@ def import_data():
         file = request.files.get("file")
         if not file:
             flash("Aucun fichier sélectionné", "error")
-            return redirect(request.referrer or url_for("main_routes.index"))
+            return redirect(request.referrer)
 
         try:
-            # Lecture du fichier Excel
             df = pd.read_excel(file)
-            df.columns = [col.lower() for col in df.columns]
-            print("Affichage des colonnes :", df.columns)
+            df.columns = [col.lower().strip() for col in df.columns]
 
-            websites_to_check = []  # 🔧 Liste des sites à vérifier (nouveaux ET mis à jour)
+            # 🔥 Déduplication immédiate (gain énorme)
+            df = df.drop_duplicates(subset=["url", "link_to_check"], keep="last")
 
+            # 🔥 Prétraitement des valeurs
+            df["url"] = df["url"].astype(str).str.strip()
+            df["tag"] = df["tag"].astype(str).str.lower().str.strip()
+            df["plateforme"] = df["plateforme"].astype(str).str.strip()
+            df["link_to_check"] = df["link_to_check"].astype(str).str.strip()
+            df["anchor_text"] = df["anchor_text"].astype(str).str.strip()
+
+            # 🔥 Charger TOUTES les URLs existantes en UNE SEULE REQUÊTE
+            existing_sites = Website.query.filter_by(user_id=current_user.id).all()
+            lookup = {
+                (s.url, s.link_to_check): s
+                for s in existing_sites
+            }
+
+            new_sites = []
+            updated_sites = []
+            websites_to_check = []
+
+            # 🔥 Boucle ultra-optimisée
             for _, row in df.iterrows():
-                url = str(row.get("url", "")).strip()
+                url = row["url"]
                 if not url:
                     continue
 
+                key = (url, row["link_to_check"])
                 domain = extract_domain(url)
-                tag = str(row.get("tag", "")).lower().strip()
-                source_plateforme = str(row.get("plateforme", "")).strip()
-                link_to_check = str(row.get("link_to_check", "")).strip()
-                anchor_text = str(row.get("anchor_text", "")).strip()
 
-                # Vérifie si le couple (url, link_to_check) existe déjà
-                existing_site = Website.query.filter_by(
-                    url=url, link_to_check=link_to_check, user_id=current_user.id
-                ).first()
-
-                if existing_site:
-                    # 🔄 Mise à jour du site existant
-                    existing_site.tag = tag or existing_site.tag
-                    existing_site.domains = domain or existing_site.domains
-                    existing_site.source_plateforme = (
-                        source_plateforme or existing_site.source_plateforme
-                    )
-                    existing_site.anchor_text = anchor_text or existing_site.anchor_text
-                    existing_site.last_checked = datetime.now()
-
-                    websites_to_check.append(existing_site)
-                    print(f"🔁 Site mis à jour : {url}")
-
-                else:
-                    # 🆕 Nouveau site
-                    new_site = Website(
+                if key in lookup:  # 🔄 update
+                    site = lookup[key]
+                    site.tag = row["tag"] or site.tag
+                    site.domains = domain or site.domains
+                    site.source_plateforme = row["plateforme"] or site.source_plateforme
+                    site.anchor_text = row["anchor_text"] or site.anchor_text
+                    updated_sites.append(site)
+                else:  # 🆕 insert
+                    site = Website(
                         url=url,
                         domains=domain,
-                        tag=tag,
-                        source_plateforme=source_plateforme,
-                        link_to_check=link_to_check,
-                        anchor_text=anchor_text,
+                        tag=row["tag"],
+                        link_to_check=row["link_to_check"],
+                        anchor_text=row["anchor_text"],
+                        source_plateforme=row["plateforme"],
                         user_id=current_user.id,
                         first_checked=datetime.now(),
                     )
-                    db.session.add(new_site)
-                    websites_to_check.append(new_site)
-                    print(f"✅ Site ajouté : {url}")
+                    new_sites.append(site)
 
-            # 🟢 Commit une seule fois ici (important)
+                websites_to_check.append(site)
+
+            # 🔥 Commit global sites (insert + update)
+            db.session.add_all(new_sites)
             db.session.commit()
-            print(f"💾 Commit effectué ({len(websites_to_check)} sites)")
 
-            # 🟢 Lancement des tâches CELERY après le commit
-            if websites_to_check:
-                from tasks import check_single_site
+            # 🔥 Envoi Celery + TaskRecord batché
+            from tasks import check_single_site
 
-                task_ids = []
-                for website in websites_to_check:
-                    task = check_single_site.apply_async(
-                        args=[website.id],
-                        queue='standard',
-                        priority=3,
-                    )
-                    task_ids.append(task.id)
+            task_records = []
+            for site in websites_to_check:
+                task = check_single_site.apply_async(
+                    args=[site.id],
+                    queue="standard",
+                    priority=3,
+                )
+                task_records.append(
+                    TaskRecord(task_id=task.id, user_id=current_user.id)
+                )
 
-                print(f"🚀 {len(task_ids)} tâches Celery envoyées")
+            db.session.add_all(task_records)
+            db.session.commit()
+
+            flash("Import lancé 🚀 Les vérifications se font en arrière-plan.", "success")
 
         except Exception as e:
             db.session.rollback()
-            print(f"❌ Erreur lors de l'import : {e}")
-            flash("Une erreur est survenue lors de l'import.", "error")
+            print("Erreur import:", e)
+            flash("Erreur lors de l'import.", "error")
 
-        # 🧠 On ne change rien à ce que tu fais ici
-        websites = Website.query.filter_by(user_id=current_user.id).all()
+        return redirect(url_for("backlinks_routes.backlinks_list"))
 
-        total = len(websites)
-        follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
-        indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")
-
-        stats = {
-            "total": total,
-            "follow": follow_count,
-            "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
-            "indexed": indexed_count,
-            "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
-        }
-
-        sources = Source.query.all()
-
-        return redirect(request.referrer or url_for("backlinks_routes.backlinks_list"))
-
-    # 🚫 GET → on laisse comme tu avais
+    # GET → liste normale
     websites = Website.query.filter_by(user_id=current_user.id).all()
+    stats = calculate_stats(current_user.id)
     sources = Source.query.all()
-
-    total = len(websites)
-    follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
-    indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")
-
-    stats = {
-        "total": total,
-        "follow": follow_count,
-        "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
-        "indexed": indexed_count,
-        "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
-    }
-
-    db.session.commit()
-    save_stats_snapshot(current_user.id)
-    flash("Import terminé ✅ Les URLs ont été ajoutées ou mises à jour.", "success")
 
     return render_template(
         "backlinks/list.html",
@@ -476,6 +441,123 @@ def import_data():
         order="desc",
         sources=sources,
     )
+
+
+if False : 
+    @sites_routes.route("/import", methods=["GET", "POST"])
+    def import_data():
+        if request.method == "POST":
+            file = request.files.get("file")
+            if not file:
+                flash("Aucun fichier sélectionné", "error")
+                return redirect(request.referrer)
+
+            try:
+                df = pd.read_excel(file)
+                df.columns = [col.lower().strip() for col in df.columns]
+
+                websites_to_check = []
+
+                for _, row in df.iterrows():
+                    url = str(row.get("url", "")).strip()
+                    if not url:
+                        continue
+
+                    tag = str(row.get("tag", "")).lower().strip()
+                    domain = extract_domain(url)
+                    source_plateforme = str(row.get("plateforme", "")).strip()
+                    link_to_check = str(row.get("link_to_check", "")).strip()
+                    anchor_text = str(row.get("anchor_text", "")).strip()
+
+                    site = Website.query.filter_by(
+                        url=url, link_to_check=link_to_check, user_id=current_user.id
+                    ).first()
+
+                    if site:
+                        site.tag = tag or site.tag
+                        site.domains = domain or site.domains
+                        site.source_plateforme = source_plateforme or site.source_plateforme
+                        site.anchor_text = anchor_text or site.anchor_text
+                    else:
+                        site = Website(
+                            url=url,
+                            domains=domain,
+                            tag=tag,
+                            link_to_check=link_to_check,
+                            anchor_text=anchor_text,
+                            source_plateforme=source_plateforme,
+                            user_id=current_user.id,
+                            first_checked=datetime.now(),
+                        )
+                        db.session.add(site)
+
+                    websites_to_check.append(site)
+
+                db.session.commit()
+
+                # Lancer Celery
+                from tasks import check_single_site
+
+                task_records = []  # Buffer
+
+                for site in websites_to_check:
+                    task = check_single_site.apply_async(
+                        args=[site.id],
+                        queue="standard",
+                        priority=3
+                    )
+
+                    task_records.append(
+                        TaskRecord(task_id=task.id, user_id=current_user.id)
+                    )
+
+                # Ajout des enregistrements en une seule fois
+                db.session.add_all(task_records)
+                db.session.commit()
+
+
+                flash(
+                    "Import lancé 🚀 Les vérifications se font en arrière-plan.", "success"
+                )
+
+            except Exception as e:
+                db.session.rollback()
+                print("Erreur import:", e)
+                flash("Erreur lors de l'import.", "error")
+
+            return redirect(url_for("backlinks_routes.backlinks_list"))
+
+        # GET → liste normale
+        websites = Website.query.filter_by(user_id=current_user.id).all()
+        stats = calculate_stats(current_user.id)
+        sources = Source.query.all()
+
+        return render_template(
+            "backlinks/list.html",
+            backlinks=websites,
+            stats=stats,
+            current_page=1,
+            total_pages=1,
+            sort="created",
+            order="desc",
+            sources=sources,
+        )
+
+
+def calculate_stats(user_id):
+    websites = Website.query.filter_by(user_id=user_id).all()
+    total = len(websites)
+    follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
+    indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")
+    stats = {
+        "total": total,
+        "follow": follow_count,
+        "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
+        "indexed": indexed_count,
+        "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
+    }
+    return stats
+
 
 # bouton pour exporter les données en CSV
 @sites_routes.route("/export_data", methods=["GET"])
@@ -582,12 +664,10 @@ def shared_data():
     Page permettant de consulter les données partagées par d'autres utilisateurs.
     L'utilisateur peut sélectionner un propriétaire (owner) parmi ceux qui lui ont donné accès.
     """
-    from sqlalchemy import func
 
     # Étape 1 : récupérer tous les utilisateurs qui m'ont partagé leurs données
     shared_with_me = (
-        UserAccess.query
-        .options(joinedload(UserAccess.owner))
+        UserAccess.query.options(joinedload(UserAccess.owner))
         .filter_by(grantee_id=current_user.id)
         .all()
     )
@@ -623,11 +703,7 @@ def shared_data():
         total_items = query.count()
         total_pages = ceil(total_items / per_page) if total_items > 0 else 1
 
-        backlinks = (
-            query.offset((page - 1) * per_page)
-            .limit(per_page)
-            .all()
-        )
+        backlinks = query.offset((page - 1) * per_page).limit(per_page).all()
         current_page = page
 
         # Qualité pour chaque site
@@ -702,7 +778,9 @@ def shared_data():
         stats=stats,
         # 👉 IMPORTANT : base de pagination = route PARTIELLE
         pagination_base_url=(
-            url_for("sites_routes.shared_data_table_partial", owner_id=selected_owner.id)
+            url_for(
+                "sites_routes.shared_data_table_partial", owner_id=selected_owner.id
+            )
             if selected_owner
             else None
         ),
@@ -713,13 +791,14 @@ def shared_data():
 @login_required
 def shared_data_table_partial():
     """Partial HTMX - seulement le tableau pour les données partagées"""
-    from sqlalchemy import func
 
     # ⚡ Si ce n’est pas un appel HTMX, redirige vers la page complète
     if not request.headers.get("HX-Request"):
         page = request.args.get("page", 1, type=int)
         owner_id = request.args.get("owner_id", type=int)
-        return redirect(url_for("sites_routes.shared_data", owner_id=owner_id, page=page))
+        return redirect(
+            url_for("sites_routes.shared_data", owner_id=owner_id, page=page)
+        )
 
     owner_id = request.args.get("owner_id", type=int)
     if not owner_id:
@@ -740,11 +819,7 @@ def shared_data_table_partial():
     total_items = query.count()
     total_pages = ceil(total_items / per_page) if total_items > 0 else 1
 
-    backlinks = (
-        query.offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
-    )
+    backlinks = query.offset((page - 1) * per_page).limit(per_page).all()
 
     # Calcul qualité
     for site in backlinks:

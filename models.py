@@ -81,6 +81,12 @@ class WebsiteStats(db.Model):
     def __repr__(self):
         return f"<WebsiteStats {self.user_id} {self.date.strftime('%Y-%m-%d')}>"
 
+class TaskRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.String(200), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)

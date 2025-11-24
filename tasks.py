@@ -5,8 +5,16 @@ from aiohttp import ClientError, ClientSession
 
 # Importer Celery depuis le fichier dédié
 from celery_app import celery
-from models import User, Website, db
+from models import User, Website,TaskRecord
 from services.api_babbar import fetch_url_data
+from database import db
+
+# 🔧 CONFIGURATION DES LIMITES D'API
+API_RATE_LIMITS = {
+    "babbar": {"calls_per_minute": 10, "retry_after": 60},
+    "google": {"calls_per_minute": 20, "retry_after": 30},
+    "default": {"calls_per_minute": 10, "retry_after": 60},
+}
 
 
 class APIRateLimitError(Exception):
@@ -21,35 +29,27 @@ class APIRateLimitError(Exception):
 
 
 async def process_site_async(site_id):
-    """Traite la vérification d'un site de manière asynchrone
-
-    ⚠️ Cette fonction doit être appelée depuis un contexte Flask (tâche Celery)
-    pour avoir accès à db.session
-    """
-    # Importer ici pour éviter les imports circulaires
     from services.api_serpapi import check_google_indexation
     from services.check_service import check_link_presence_and_follow_status_async
 
-    # Récupérer le site depuis la DB (dans le contexte Flask de la tâche)
     site = Website.query.get(site_id)
     if not site:
         return {"success": False, "site_id": site_id, "error": "Site non trouvé"}
 
     async with ClientSession() as session:
         try:
-            # Vérifications
+            # 1) Vérifications HTML
             link_data = await check_link_presence_and_follow_status_async(
                 session, site.url, site.link_to_check, site.anchor_text
             )
+
             index_status = await check_google_indexation(session, site.url)
 
             link_present, anchor_present, follow_status, status_code = link_data
-            site.status_code = status_code
 
-            # Sauvegarde de l'historique (ancien état)
+            # Enregistrer l'ancien état
             old_site = Website(
                 url=site.url,
-                domains=site.domains,  # ✅ IMPORTANT : ne pas oublier le domaine
                 link_to_check=site.link_to_check,
                 anchor_text=site.anchor_text,
                 link_status=site.link_status,
@@ -68,7 +68,8 @@ async def process_site_async(site_id):
                 tag=site.tag,
             )
 
-            # Mise à jour du site
+            # 2) Mise à jour partielle
+            site.status_code = status_code
             site.link_status = "Lien présent" if link_present else "URL non présente"
             site.link_follow_status = follow_status if link_present else None
             site.anchor_status = (
@@ -76,42 +77,37 @@ async def process_site_async(site_id):
             )
             site.google_index_status = index_status
 
-            if site.first_checked is None:
-                site.first_checked = datetime.now()
-
-            site.last_checked = datetime.now()
-
-            # Données Babbar avec gestion des erreurs API
+            # 3) Récupération Babbar AVANT commit
             try:
                 fetch_url_data(site.url, async_mode=False)
             except Exception as e:
-                error_msg = str(e).lower()
-                if "rate limit" in error_msg or "429" in error_msg:
-                    print(f"⚠️ Rate limit Babbar pour {site.url}")
+                err = str(e).lower()
+                if "limit" in err or "429" in err:
                     raise APIRateLimitError("babbar", retry_after=60)
                 else:
-                    # ⚠️ NE PAS PROPAGER - juste logger l'erreur
-                    print(f"⚠️ Erreur Babbar pour {site.url}: {e}")
+                    print(f"⚠️ Erreur Babbar non critique : {e}")
 
-            # Sauvegarde en base
+            # 4) last_checked — maintenant OK
+            site.last_checked = datetime.now()
+            if not site.first_checked:
+                site.first_checked = datetime.now()
+
+            # 5) Commit FINAL UNIQUE
             db.session.commit()
+
+            # Ajouter l'historique
             db.session.add(old_site)
             db.session.commit()
 
-            return {
-                "success": True,
-                "site_id": site.id,
-                "url": site.url,
-                "link_status": site.link_status,
-                "index_status": site.google_index_status,
-            }
+            return {"success": True, "site_id": site.id}
 
         except APIRateLimitError:
-            # Propager l'erreur pour le retry
-            raise
-        except Exception as e:
-            print(f"❌ Erreur traitement de {site.url}: {e}")
             db.session.rollback()
+            raise
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Erreur pour {site.url}: {e}")
             raise
 
 
@@ -120,62 +116,36 @@ async def process_site_async(site_id):
     bind=True,
     max_retries=5,
     default_retry_delay=60,
-    rate_limit="10/m",  # ⬆️ Augmenté pour parallélisme
+    rate_limit="15/m",
     autoretry_for=(APIRateLimitError, ClientError),
     retry_backoff=True,
     retry_backoff_max=600,
     retry_jitter=True,
 )
-def check_single_site(self, site_id, urgent=False):
-    """Vérifie un seul site avec gestion intelligente des retries
-
-    Args:
-        site_id: ID du site à vérifier
-        urgent: Si True, la tâche sera routée vers la queue 'urgent' (priorité haute)
-    """
+def check_single_site(self, site_id):
     try:
-        # 🚀 Routing dynamique vers queue urgent si demandé
-        if urgent and self.request.delivery_info:
-            self.request.delivery_info["priority"] = 9
-
-        print(f"🔍 Vérification du site ID: {site_id} {'[URGENT]' if urgent else ''}")
+        print(f"🔍 Vérification site ID: {site_id}")
 
         site = Website.query.get(site_id)
         if not site:
-            # 🚫 Site supprimé : on stoppe immédiatement sans retry
-            print(f"⏭️ Site {site_id} ignoré (supprimé) — tâche annulée.")
-            self.request.callbacks = None
-            self.request.errbacks = None
-            return {"success": True, "skipped": True, "site_id": site_id}
+            print(f"⏭️ Site {site_id} supprimé — tâche terminée")
+            return {"success": True, "skipped": True}
 
-        # Exécuter la vérification
         result = asyncio.run(process_site_async(site_id))
-        print(f"✅ Site {site_id} vérifié avec succès")
+        print(f"✅ Vérification OK pour {site_id}")
         return result
 
     except APIRateLimitError as exc:
-        retry_after = exc.retry_after
-        print(f"⏳ Rate limit atteint pour site {site_id}. Retry dans {retry_after}s.")
-        raise self.retry(exc=exc, countdown=retry_after)
-
-    except ClientError as exc:
-        print(f"🔄 Erreur réseau pour site {site_id}. Retry automatique...")
-        raise self.retry(exc=exc)
+        print(f"⏳ Rate limit pour site {site_id}, retry dans {exc.retry_after}s")
+        raise self.retry(exc=exc, countdown=exc.retry_after)
 
     except Exception as exc:
-        # ⚙️ Seulement retry si le site existe encore
         site = Website.query.get(site_id)
         if site and self.request.retries < self.max_retries:
-            print(f"⚠️ Erreur pour site {site_id}: {exc}. Retry...")
+            print(f"🔄 Erreur {exc}, retry…")
             raise self.retry(exc=exc)
-        else:
-            print(f"❌ Tâche arrêtée définitivement pour site {site_id}.")
-            return {
-                "success": False,
-                "site_id": site_id,
-                "error": str(exc),
-                "stopped": True,
-            }
+        print(f"❌ Abandon du site {site_id}")
+        return {"success": False, "error": str(exc)}
 
 
 @celery.task(
@@ -228,9 +198,13 @@ def check_all_user_sites(user_id, urgent=False):
         )
         task_ids.append(task.id)
 
+        db.session.add(TaskRecord(task_id=task.id, user_id=user_id))
+
         # Log tous les 25 sites
         if (i + 1) % 25 == 0:
             print(f"  ⏳ {i + 1}/{total_sites} tâches planifiées...")
+
+    db.session.commit()
 
     print(f"✅ {len(task_ids)} tâches lancées ({skipped} sites ignorés).")
     print(f"🔥 Mode: {'URGENT (priorité haute)' if urgent else 'STANDARD'}")

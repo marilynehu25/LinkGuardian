@@ -6,7 +6,7 @@
         <!-- Pagination en haut -->
     {% if total_pages > 1 %}
     <div class="px-6 py-4 border-b border-gray-700">
-        {{ pagination(current_page, total_pages, "/anchors/partial/table", "anchors-table") }}
+        {{ pagination(current_page, total_pages, pagination_base_url, "anchors-table") }}
     </div>
     {% endif %}
 
@@ -24,10 +24,11 @@
                 <tbody class="divide-y divide-gray-700">
                     {% for anchor in anchors %}
                     <tr class="hover:bg-gray-800/50 transition-colors">
+
                         <!-- Ancre -->
-                        <td class="px-6 py-4">
-                            <div class="max-w-xs">
-                                <div class="font-medium text-white truncate" title="{{ anchor.text }}">
+                        <td class="px-6 py-4 w-1/2">
+                            <div class="whitespace-normal break-words">
+                                <div class="font-medium text-white" title="{{ anchor.text }}">
                                     "{{ anchor.text }}"
                                 </div>
                                 <div class="text-sm text-gray-400">
@@ -37,7 +38,7 @@
                         </td>
                         
                         <!-- Utilisation -->
-                        <td class="px-6 py-4">
+                        <td class="px-6 py-4 w-1/6">
                             <div class="flex items-center space-x-3">
                                 <div class="text-xl font-bold text-primary">{{ anchor.count }}</div>
                                 <div class="text-sm text-gray-400">
@@ -51,7 +52,7 @@
                         </td>
                         
                         <!-- Pourcentage -->
-                        <td class="px-6 py-4">
+                        <td class="px-6 py-4 w-1/5">
                             <div class="flex items-center space-x-3">
                                 <div class="text-lg font-bold {{ 'text-danger' if anchor.ratio > 15 else 'text-white' }}">
                                     {{ "%.1f"|format(anchor.ratio) }}%
@@ -72,7 +73,7 @@
                         </td>
                         
                         <!-- Type -->
-                        <td class="px-6 py-4">
+                        <td class="px-6 py-4 w-1/6">
                             {% if anchor.type == 'branded' %}
                                 {{ status_badge("high_quality", "Marque") }}
                             {% elif anchor.type == 'exact_match' %}

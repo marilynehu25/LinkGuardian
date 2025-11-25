@@ -6,181 +6,191 @@ from flask import Blueprint, render_template, request
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
-from models import Website, WebsiteStats
+from models import Website, WebsiteStats, Tag, Source
 
 # Création du Blueprint
 main_routes = Blueprint("main_routes", __name__)
 
+def apply_filters(query, filter_tag=None, filter_source=None):
+    if filter_tag:
+        query = query.filter(func.lower(Website.tag) == filter_tag.lower())
 
-def get_date_range(range_param="30d"):
-    """Calcule la plage de dates selon le paramètre (7d, 30d, 90d)"""
+    if filter_source:
+        query = query.filter(
+            func.lower(Website.source_plateforme) == filter_source.lower()
+        )
+
+    return query
+
+
+def get_date_range(range_param="1m"):
+    """Calcule la plage de dates selon (1m, 3m, 6m, 12m)"""
     now = datetime.now()
 
-    if range_param == "7d":
-        days = 7
-        label = "7 derniers jours"
-    elif range_param == "90d":
+    if range_param == "3m":
         days = 90
-        label = "90 derniers jours"
-    else:  # Par défaut 30d
+        label = "3 derniers mois"
+    elif range_param == "6m":
+        days = 180
+        label = "6 derniers mois"
+    elif range_param == "12m":
+        days = 365
+        label = "12 derniers mois"
+    else:  # par défaut : 1 mois
         days = 30
-        label = "30 derniers jours"
+        label = "Dernier mois"
 
     start_date = now - timedelta(days=days)
     return start_date, now, days, label
 
 
-def calculate_total_backlinks(user_id):
-    """Calcule le nombre total de backlinks actuels"""
-    return Website.query.filter_by(user_id=user_id).count()
+def calculate_total_backlinks(user_id, filter_tag=None, filter_source=None):
+    query = Website.query.filter(Website.user_id == user_id)
+    query = apply_filters(query, filter_tag, filter_source)
+    return query.count()
 
 
-def calculate_backlinks_added(user_id, start_date):
+
+def calculate_backlinks_added(user_id, start_date, filter_tag=None, filter_source=None):
     """Calcule le nombre de backlinks ajoutés dans la période"""
-    return Website.query.filter(
-        Website.user_id == user_id, Website.first_checked >= start_date
-    ).count()
 
-
-def calculate_total_domains(user_id):
-    """Compte le nombre de domaines uniques."""
-    count = (
-        Website.query.filter(Website.user_id == user_id)
-        .with_entities(Website.domains)
-        .distinct()
-        .count()
-    )
-    return count or 0
-
-
-def calculate_domains_added(user_id, start_date):
-    return len(
-        {
-            d
-            for (d,) in Website.query.with_entities(Website.domains)
-            .filter(Website.user_id == user_id, Website.first_checked >= start_date)
-            .all()
-            if d
-        }
+    query = Website.query.filter(
+        Website.user_id == user_id,
+        Website.first_checked >= start_date
     )
 
+    # 🔥 Appliquer filtres Tag + Source
+    query = apply_filters(query, filter_tag, filter_source)
 
-def calculate_total_urls(user_id):
-    """Calcule le nombre total d'URLs principales uniques (link_to_check) actuelles"""
-    unique_urls = (
-        Website.query.filter_by(user_id=user_id)
-        .with_entities(Website.link_to_check)
-        .distinct()
-        .count()
+    return query.count()
+
+
+def calculate_total_domains(user_id, filter_tag=None, filter_source=None):
+    query = Website.query.with_entities(Website.domains).filter(
+        Website.user_id == user_id
+    )
+    query = apply_filters(query, filter_tag, filter_source)
+    return query.distinct().count()
+
+
+
+def calculate_domains_added(user_id, start_date, filter_tag=None, filter_source=None):
+    query = Website.query.with_entities(Website.domains).filter(
+        Website.user_id == user_id,
+        Website.first_checked >= start_date
     )
 
-    return unique_urls
+    # 🔥 Appliquer filtres Tag + Source
+    query = apply_filters(query, filter_tag, filter_source)
+
+    domains = {d for (d,) in query.all() if d}
+
+    return len(domains)
 
 
-def calculate_urls_added(user_id, start_date):
-    """Calcule le nombre d'URLs principales uniques ajoutées dans la période"""
-    unique_urls = (
-        Website.query.filter(
-            Website.user_id == user_id, Website.first_checked >= start_date
-        )
-        .with_entities(Website.link_to_check)
-        .distinct()
-        .count()
+
+def calculate_total_urls(user_id, filter_tag=None, filter_source=None):
+    query = Website.query.with_entities(Website.link_to_check).filter(
+        Website.user_id == user_id
     )
+    query = apply_filters(query, filter_tag, filter_source)
+    return query.distinct().count()
 
-    return unique_urls
+
+def calculate_urls_added(user_id, start_date, filter_tag=None, filter_source=None):
+    query = Website.query.with_entities(Website.link_to_check).filter(
+        Website.user_id == user_id,
+        Website.first_checked >= start_date
+    )
+    query = apply_filters(query, filter_tag, filter_source)
+    return query.distinct().count()
 
 
-def calculate_follow_percentage(user_id):
-    """Calcule le pourcentage actuel de liens follow"""
-    total = Website.query.filter_by(user_id=user_id).count()
+
+def calculate_follow_percentage(user_id, filter_tag=None, filter_source=None):
+    total_q = Website.query.filter(Website.user_id == user_id)
+    total_q = apply_filters(total_q, filter_tag, filter_source)
+    total = total_q.count()
 
     if total == 0:
         return 0.0
 
-    follow_count = Website.query.filter_by(
-        user_id=user_id, link_follow_status="follow"
-    ).count()
+    follow_q = Website.query.filter(
+        Website.user_id == user_id,
+        Website.link_follow_status == "follow"
+    )
+    follow_q = apply_filters(follow_q, filter_tag, filter_source)
+    follow = follow_q.count()
 
-    return round((follow_count / total) * 100, 1)
+    return round((follow / total) * 100, 1)
 
 
-def calculate_follow_percentage_change(user_id, start_date):
-    """Calcule le changement du pourcentage de liens follow dans la période"""
-    # Pourcentage actuel
-    current_percentage = calculate_follow_percentage(user_id)
 
-    # Pourcentage avant la période (tous les sites ajoutés avant start_date)
-    total_before = Website.query.filter(
-        Website.user_id == user_id, Website.first_checked < start_date
-    ).count()
+def calculate_follow_percentage_change(user_id, start_date, filter_tag=None, filter_source=None):
+    current_percentage = calculate_follow_percentage(user_id, filter_tag, filter_source)
+
+    total_before_q = Website.query.filter(
+        Website.user_id == user_id,
+        Website.first_checked < start_date
+    )
+    total_before_q = apply_filters(total_before_q, filter_tag, filter_source)
+    total_before = total_before_q.count()
 
     if total_before == 0:
         return 0.0
 
-    follow_before = Website.query.filter(
+    follow_before_q = Website.query.filter(
         Website.user_id == user_id,
         Website.first_checked < start_date,
-        Website.link_follow_status == "follow",
-    ).count()
+        Website.link_follow_status == "follow"
+    )
+    follow_before_q = apply_filters(follow_before_q, filter_tag, filter_source)
+    follow_before = follow_before_q.count()
 
     percentage_before = round((follow_before / total_before) * 100, 1)
-
-    # Différence
-    change = round(current_percentage - percentage_before, 1)
-    return change
+    return round(current_percentage - percentage_before, 1)
 
 
-def calculate_average_quality(user_id):
-    """Calcule la qualité moyenne actuelle (PageTrust * 0.6 + PageValue * 0.4)"""
-    sites = Website.query.filter(
+
+def calculate_average_quality(user_id, filter_tag=None, filter_source=None):
+    q = Website.query.filter(
         Website.user_id == user_id,
         Website.page_trust.isnot(None),
         Website.page_value.isnot(None),
-    ).all()
+    )
+    q = apply_filters(q, filter_tag, filter_source)
+    sites = q.all()
 
     if not sites:
-        return 0.0
+        return 0
 
-    total_quality = 0
-    for site in sites:
-        quality = (site.page_trust * 0.6) + (site.page_value * 0.4)
-        total_quality += quality
-
-    avg_quality = total_quality / len(sites)
-    return round(avg_quality, 1)
+    total_quality = sum((site.page_trust * 0.6 + site.page_value * 0.4) for site in sites)
+    return round(total_quality / len(sites), 1)
 
 
-def calculate_quality_change(user_id, start_date):
-    """Calcule le changement de qualité moyenne dans la période"""
-    # Qualité actuelle
-    current_quality = calculate_average_quality(user_id)
+def calculate_quality_change(user_id, start_date, filter_tag=None, filter_source=None):
+    current_quality = calculate_average_quality(user_id, filter_tag, filter_source)
 
-    # Qualité avant la période
-    sites_before = Website.query.filter(
+    q = Website.query.filter(
         Website.user_id == user_id,
         Website.first_checked < start_date,
         Website.page_trust.isnot(None),
         Website.page_value.isnot(None),
-    ).all()
+    )
+    q = apply_filters(q, filter_tag, filter_source)
+    sites_before = q.all()
 
     if not sites_before:
-        return 0.0
+        return 0
 
-    total_quality_before = 0
-    for site in sites_before:
-        quality = (site.page_trust * 0.6) + (site.page_value * 0.4)
-        total_quality_before += quality
+    total_quality = sum((s.page_trust * 0.6 + s.page_value * 0.4) for s in sites_before)
+    avg_quality_before = total_quality / len(sites_before)
 
-    avg_quality_before = total_quality_before / len(sites_before)
-
-    # Différence
-    change = round(current_quality - avg_quality_before, 1)
-    return change
+    return round(current_quality - avg_quality_before, 1)
 
 
-def get_evolution_data(user_id, start_date, days):
-    """Génère les données d'évolution des backlinks et domaines sur la période"""
+
+def get_evolution_data(user_id, start_date, days, filter_tag=None, filter_source=None):
     intervals = []
     backlinks_counts = []
     domains_counts = []
@@ -190,33 +200,22 @@ def get_evolution_data(user_id, start_date, days):
         date = start_date + timedelta(days=interval_days * i)
         intervals.append(date.strftime("%Y-%m-%d"))
 
-        # ✅ Compter seulement dans la période sélectionnée
-        count = Website.query.filter(
+        # Backlinks
+        q = Website.query.filter(
             Website.user_id == user_id,
-            Website.first_checked >= start_date,  # ← LIGNE AJOUTÉE
             Website.first_checked <= date,
-        ).count()
-        backlinks_counts.append(count)
-
-        sites = (
-            Website.query.filter(
-                Website.user_id == user_id,
-                Website.first_checked >= start_date,  # ← LIGNE AJOUTÉE
-                Website.first_checked <= date,
-            )
-            .with_entities(Website.url)
-            .all()
         )
+        q = apply_filters(q, filter_tag, filter_source)
+        backlinks_counts.append(q.count())
 
-        unique_domains = set()
-        for site in sites:
-            if site.url:
-                parsed = urlparse(site.url)
-                domain = parsed.netloc.replace("www.", "")
-                if domain:
-                    unique_domains.add(domain)
-
-        domains_counts.append(len(unique_domains))
+        # Domains
+        q_dom = Website.query.filter(
+            Website.user_id == user_id,
+            Website.first_checked <= date,
+        )
+        q_dom = apply_filters(q_dom, filter_tag, filter_source)
+        domains = {urlparse(s.url).netloc.replace("www.", "") for s in q_dom.all() if s.url}
+        domains_counts.append(len(domains))
 
     return [
         {"name": "Backlinks", "x": intervals, "y": backlinks_counts},
@@ -224,32 +223,38 @@ def get_evolution_data(user_id, start_date, days):
     ]
 
 
-def get_follow_distribution(user_id):
-    """Génère les données de répartition Follow/NoFollow"""
 
-    # Total
-    total_count = Website.query.filter_by(user_id=user_id).count()
+def get_follow_distribution(user_id, filter_tag=None, filter_source=None):
+    q_total = Website.query.filter(Website.user_id == user_id)
+    q_total = apply_filters(q_total, filter_tag, filter_source)
+    total = q_total.count()
 
-    # Follow
-    follow_count = Website.query.filter_by(
-        user_id=user_id, link_follow_status="follow"
-    ).count()
-
-    # Tout le reste (nofollow + NULL + autres)
-    nofollow_count = total_count - follow_count
+    q_follow = Website.query.filter(
+        Website.user_id == user_id,
+        Website.link_follow_status == "follow"
+    )
+    q_follow = apply_filters(q_follow, filter_tag, filter_source)
+    follow = q_follow.count()
 
     return {
         "labels": ["Follow", "NoFollow"],
-        "values": [follow_count, nofollow_count],
+        "values": [follow, total - follow],
         "colors": ["#22c55e", "#f59e0b"],
     }
 
 
-def get_http_status_distribution(user_id):
+def get_http_status_distribution(user_id, filter_tag=None, filter_source=None):
     """Génère les données de répartition des statuts HTTP"""
     status_counts = {}
 
-    sites = Website.query.filter_by(user_id=user_id).all()
+    # 🔥 Construire la QUERY
+    query = Website.query.filter(Website.user_id == user_id)
+
+    # 🔥 Appliquer les filtres Tag / Source correctement
+    query = apply_filters(query, filter_tag, filter_source)
+
+    # 🔥 Exécuter la query SEULEMENT après les filtres
+    sites = query.all()
 
     for site in sites:
         status = site.status_code or "Inconnu"
@@ -277,16 +282,16 @@ def get_http_status_distribution(user_id):
 
     return {"labels": labels, "values": values, "colors": colors}
 
+def get_top_anchors(user_id, limit=10, filter_tag=None, filter_source=None):
+    q = Website.query.filter(
+        Website.user_id == user_id,
+        Website.anchor_text.isnot(None),
+        Website.anchor_text != "",
+    )
+    q = apply_filters(q, filter_tag, filter_source)
 
-def get_top_anchors(user_id, limit=10):
-    """Génère le top des ancres les plus utilisées avec retour à la ligne si nécessaire"""
     anchors = (
-        Website.query.filter(
-            Website.user_id == user_id,
-            Website.anchor_text.isnot(None),
-            Website.anchor_text != "",
-        )
-        .with_entities(
+        q.with_entities(
             Website.anchor_text, func.count(Website.anchor_text).label("count")
         )
         .group_by(Website.anchor_text)
@@ -326,19 +331,16 @@ def get_top_anchors(user_id, limit=10):
 
 
 
-def get_pv_pt_scatter(user_id, start_date, end_date, limit=50):
-    """Génère les données scatter Page Value vs Page Trust"""
-    sites = (
-        Website.query.filter(
-            Website.user_id == user_id,
-            Website.page_value.isnot(None),
-            Website.page_trust.isnot(None),
-            Website.last_checked >= start_date,
-            Website.last_checked <= end_date,
-        )
-        .order_by((Website.page_value + Website.page_trust).desc())
-        .all()
+def get_pv_pt_scatter(user_id, start_date, end_date, limit=50, filter_tag=None, filter_source=None):
+    q = Website.query.filter(
+        Website.user_id == user_id,
+        Website.page_value.isnot(None),
+        Website.page_trust.isnot(None),
+        Website.last_checked >= start_date,
+        Website.last_checked <= end_date,
     )
+    q = apply_filters(q, filter_tag, filter_source)
+    sites = q.order_by((Website.page_value + Website.page_trust).desc()).limit(limit).all()
 
     x_values = [site.page_value for site in sites]
     y_values = [site.page_trust for site in sites]
@@ -348,41 +350,89 @@ def get_pv_pt_scatter(user_id, start_date, end_date, limit=50):
     return {"x": x_values, "y": y_values, "labels": labels, "sizes": sizes}
 
 
-def calculate_links_diff_period(user_id, period="30d"):
+def calculate_links_diff_period(
+    user_id,
+    period="1m",
+    filter_tag=None,
+    filter_source=None
+):
     """
-    Calcule le nombre de liens gagnés et perdus sur une période (7d, 30d, 90d)
-    en comparant les snapshots WebsiteStats.
+    Calcule les liens gagnés/perdus sur une période.
+    
+    - SANS filtre : utilise WebsiteStats (rapide, snapshots)
+    - AVEC filtres Tag / Source : calcule en direct depuis Website (précis)
     """
+
     # Déterminer la durée en jours
-    if period == "7d":
-        days = 7
-    elif period == "90d":
+    if period == "12m":
+        days = 365
+    elif period == "6m":
+        days = 180
+    elif period == "3m":
         days = 90
     else:
-        days = 30  # par défaut
+        days = 30  # par défaut : 1 mois
 
-    end_date = datetime.utcnow()
+    end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
 
-    # Snapshot le plus récent AVANT la date de fin (aujourd'hui)
+    # ───────────────────────────────────────────────
+    # 🚨 MODE 1 : FILTRÉ → Website (pas WebsiteStats)
+    # ───────────────────────────────────────────────
+    if filter_tag or filter_source:
+        # Backlinks avant la période
+        previous_query = Website.query.filter(
+            Website.user_id == user_id,
+            Website.first_checked < start_date
+        )
+        previous_query = apply_filters(previous_query, filter_tag, filter_source)
+        previous_total = previous_query.count()
+
+        # Backlinks jusqu'à maintenant
+        current_query = Website.query.filter(
+            Website.user_id == user_id,
+            Website.first_checked <= end_date
+        )
+        current_query = apply_filters(current_query, filter_tag, filter_source)
+        current_total = current_query.count()
+
+        diff = current_total - previous_total
+        lost = abs(diff) if diff < 0 else 0
+        gained = diff if diff > 0 else 0
+
+        return {
+            "period": period,
+            "lost": lost,
+            "gained": gained,
+            "previous_total": previous_total,
+            "current_total": current_total,
+            "date_start": start_date.strftime("%Y-%m-%d"),
+            "date_end": end_date.strftime("%Y-%m-%d"),
+            "filtered": True,
+        }
+
+    # ───────────────────────────────────────────────
+    # 🚀 MODE 2 : NON FILTRÉ → WebsiteStats (défaut)
+    # ───────────────────────────────────────────────
+
     latest = (
         WebsiteStats.query.filter(
-            WebsiteStats.user_id == user_id, WebsiteStats.date <= end_date
+            WebsiteStats.user_id == user_id,
+            WebsiteStats.date <= end_date
         )
         .order_by(WebsiteStats.date.desc())
         .first()
     )
 
-    # Snapshot le plus proche AVANT la date de début
     previous = (
         WebsiteStats.query.filter(
-            WebsiteStats.user_id == user_id, WebsiteStats.date <= start_date
+            WebsiteStats.user_id == user_id,
+            WebsiteStats.date <= start_date
         )
         .order_by(WebsiteStats.date.desc())
         .first()
     )
 
-    # Si pas de snapshot suffisant, on ne calcule rien
     if not latest or not previous:
         return {
             "period": period,
@@ -390,6 +440,7 @@ def calculate_links_diff_period(user_id, period="30d"):
             "gained": 0,
             "previous_total": previous.total_backlinks if previous else 0,
             "current_total": latest.total_backlinks if latest else 0,
+            "filtered": False,
         }
 
     diff = latest.total_backlinks - previous.total_backlinks
@@ -404,6 +455,7 @@ def calculate_links_diff_period(user_id, period="30d"):
         "current_total": latest.total_backlinks,
         "date_start": previous.date.strftime("%Y-%m-%d"),
         "date_end": latest.date.strftime("%Y-%m-%d"),
+        "filtered": False,
     }
 
 
@@ -413,40 +465,42 @@ def index():
     """Route principale du dashboard"""
 
     # Récupérer la plage de dates
-    range_param = request.args.get("range", "30d")
-    start_date, end_date, days, range_label = get_date_range(range_param)
+    range_param = request.args.get("range", "1m")
+    filter_tag = request.args.get("tag")
+    filter_source = request.args.get("source")
+    start_date, end_date, days, range_label = get_date_range(range_param )
 
     # === KPIs ===
 
     # 1. Backlinks totaux
-    total_backlinks = calculate_total_backlinks(current_user.id)
-    backlinks_added = calculate_backlinks_added(current_user.id, start_date)
+    total_backlinks = calculate_total_backlinks(current_user.id , filter_tag, filter_source)
+    backlinks_added = calculate_backlinks_added(current_user.id, start_date , filter_tag, filter_source)
     backlinks_change = (
         f"+{backlinks_added}" if backlinks_added > 0 else str(backlinks_added)
     )
     backlinks_change_type = "positive" if backlinks_added >= 0 else "negative"
 
     # 2. Domaines référents
-    total_domains = calculate_total_domains(current_user.id)
-    domains_added = calculate_domains_added(current_user.id, start_date)
+    total_domains = calculate_total_domains(current_user.id , filter_tag, filter_source)
+    domains_added = calculate_domains_added(current_user.id, start_date , filter_tag, filter_source)
     domains_change = f"+{domains_added}" if domains_added > 0 else str(domains_added)
     domains_change_type = "positive" if domains_added >= 0 else "negative"
 
-    links_diff = calculate_links_diff_period(current_user.id, period=range_param)
+    links_diff = calculate_links_diff_period(current_user.id, period=range_param , filter_tag=filter_tag, filter_source=filter_source)
     links_lost = links_diff["lost"]
     links_gained = links_diff["gained"]
 
     # 5. % Follow
-    follow_percentage = calculate_follow_percentage(current_user.id)
-    follow_change = calculate_follow_percentage_change(current_user.id, start_date)
+    follow_percentage = calculate_follow_percentage(current_user.id , filter_tag, filter_source)
+    follow_change = calculate_follow_percentage_change(current_user.id, start_date , filter_tag, filter_source)
     follow_change_str = (
         f"+{follow_change}%" if follow_change >= 0 else f"{follow_change}%"
     )
     follow_change_type = "positive" if follow_change >= 0 else "negative"
 
     # 6. Qualité moyenne
-    avg_quality = calculate_average_quality(current_user.id)
-    quality_change = calculate_quality_change(current_user.id, start_date)
+    avg_quality = calculate_average_quality(current_user.id , filter_tag, filter_source)
+    quality_change = calculate_quality_change(current_user.id, start_date , filter_tag, filter_source)
     quality_change_str = (
         f"+{quality_change}" if quality_change >= 0 else str(quality_change)
     )
@@ -473,12 +527,12 @@ def index():
     # === GRAPHIQUES ===
 
     charts_data = {
-        "evolution": get_evolution_data(current_user.id, start_date, days),
-        "follow_distribution": get_follow_distribution(current_user.id),
-        "http_status": get_http_status_distribution(current_user.id),
-        "top_anchors": get_top_anchors(current_user.id, limit=10),
+        "evolution": get_evolution_data(current_user.id, start_date, days , filter_tag, filter_source), 
+        "follow_distribution": get_follow_distribution(current_user.id , filter_tag, filter_source),
+        "http_status": get_http_status_distribution(current_user.id , filter_tag, filter_source),
+        "top_anchors": get_top_anchors(current_user.id, limit=10 , filter_tag = filter_tag, filter_source = filter_source),
         "pv_pt_scatter": get_pv_pt_scatter(
-            current_user.id, start_date, end_date, limit=50
+            current_user.id, start_date, end_date, limit=50, filter_tag = filter_tag, filter_source = filter_source
         ),
     }
 
@@ -492,6 +546,10 @@ def index():
         range_label=range_label,
         range_param=range_param,
         timestamp=timestamp,
+        tags=Tag.query.all(),
+        sources=Source.query.all(),
+        filter_tag=filter_tag,
+        filter_source=filter_source,
     )
 
 
@@ -501,35 +559,39 @@ def dashboard_content():
     """Route partielle HTMX pour recharger uniquement le contenu du dashboard"""
 
     # Récupérer la plage de dates
-    range_param = request.args.get("range", "30d")
+    range_param = request.args.get("range", "1m")
+
+    filter_tag = request.args.get("tag")
+    filter_source = request.args.get("source")
+
     start_date, end_date, days, range_label = get_date_range(range_param)
 
     # === KPIs ===
-    total_backlinks = calculate_total_backlinks(current_user.id)
-    backlinks_added = calculate_backlinks_added(current_user.id, start_date)
+    total_backlinks = calculate_total_backlinks(current_user.id, filter_tag, filter_source)
+    backlinks_added = calculate_backlinks_added(current_user.id, start_date, filter_tag, filter_source)
     backlinks_change = (
         f"+{backlinks_added}" if backlinks_added > 0 else str(backlinks_added)
     )
     backlinks_change_type = "positive" if backlinks_added >= 0 else "negative"
 
-    total_domains = calculate_total_domains(current_user.id)
-    domains_added = calculate_domains_added(current_user.id, start_date)
+    total_domains = calculate_total_domains(current_user.id, filter_tag, filter_source)
+    domains_added = calculate_domains_added(current_user.id, start_date, filter_tag, filter_source)
     domains_change = f"+{domains_added}" if domains_added > 0 else str(domains_added)
     domains_change_type = "positive" if domains_added >= 0 else "negative"
 
-    links_diff = calculate_links_diff_period(current_user.id, period=range_param)
+    links_diff = calculate_links_diff_period(current_user.id, period=range_param, filter_tag = filter_tag, filter_source = filter_source)
     links_lost = links_diff["lost"]
     links_gained = links_diff["gained"]
 
-    follow_percentage = calculate_follow_percentage(current_user.id)
-    follow_change = calculate_follow_percentage_change(current_user.id, start_date)
+    follow_percentage = calculate_follow_percentage(current_user.id, filter_tag, filter_source)
+    follow_change = calculate_follow_percentage_change(current_user.id, start_date, filter_tag, filter_source)
     follow_change_str = (
         f"+{follow_change}%" if follow_change >= 0 else f"{follow_change}%"
     )
     follow_change_type = "positive" if follow_change >= 0 else "negative"
 
-    avg_quality = calculate_average_quality(current_user.id)
-    quality_change = calculate_quality_change(current_user.id, start_date)
+    avg_quality = calculate_average_quality(current_user.id, filter_tag, filter_source)
+    quality_change = calculate_quality_change(current_user.id, start_date, filter_tag, filter_source)
     quality_change_str = (
         f"+{quality_change}" if quality_change >= 0 else str(quality_change)
     )
@@ -554,12 +616,12 @@ def dashboard_content():
 
     # === GRAPHIQUES ===
     charts_data = {
-        "evolution": get_evolution_data(current_user.id, start_date, days),
-        "follow_distribution": get_follow_distribution(current_user.id),
-        "http_status": get_http_status_distribution(current_user.id),
-        "top_anchors": get_top_anchors(current_user.id, limit=10),
+        "evolution": get_evolution_data(current_user.id, start_date, days, filter_tag, filter_source),
+        "follow_distribution": get_follow_distribution(current_user.id, filter_tag, filter_source),
+        "http_status": get_http_status_distribution(current_user.id, filter_tag, filter_source),
+        "top_anchors": get_top_anchors(current_user.id, limit=10, filter_tag = filter_tag, filter_source = filter_source),
         "pv_pt_scatter": get_pv_pt_scatter(
-            current_user.id, start_date, end_date, limit=50
+            current_user.id, start_date, end_date, limit=50, filter_tag = filter_tag, filter_source = filter_source
         ),
     }
 
@@ -573,4 +635,8 @@ def dashboard_content():
         range_label=range_label,
         timestamp=timestamp,
         range_param=range_param,
+        tags=Tag.query.all(),
+        sources=Source.query.all(),
+        filter_tag=filter_tag,
+        filter_source=filter_source,
     )

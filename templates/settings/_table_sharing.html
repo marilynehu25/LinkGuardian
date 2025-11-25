@@ -44,7 +44,7 @@
 
                         {% if (share.owner.role!="main_admin" or share.grantee.role!="main_admin" 
                         or share.owner.id == current_user.id or share.grantee.id == current_user.id)
-                        and current_user.role in ["admin"] %}
+                        and current_user.role in ["admin", "main_admin"] %}
                             <td class="px-6 py-4 text-right">
                                 <form method="POST"
                                     action="{{ url_for('config_routes.delete_share', share_id=share.id) }}"

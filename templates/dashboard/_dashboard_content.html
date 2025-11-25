@@ -3,13 +3,19 @@
 {% from "_layout/charts.html" import stacked_bar_chart , gauge_chart %}
 
 <!-- Alertes -->
-{% if range_param == '7d' %}
-    {{ alert("Nouveau rapport hebdomadaire disponible", "info") }}
-{% elif range_param == '30d' %}
+{% if range_param == '1m' %}
     {{ alert("Nouveau rapport mensuel disponible", "info") }}
-{% elif range_param == '90d' %}
+
+{% elif range_param == '3m' %}
     {{ alert("Nouveau rapport trimestriel disponible", "info") }}
+
+{% elif range_param == '6m' %}
+    {{ alert("Nouveau rapport semestriel disponible", "info") }}
+
+{% elif range_param == '12m' %}
+    {{ alert("Nouveau rapport annuel disponible", "info") }}
 {% endif %}
+
 
 <div id="kpi-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
     {{ kpi_card(

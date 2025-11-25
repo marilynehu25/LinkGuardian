@@ -26,7 +26,7 @@ from sqlalchemy.orm import joinedload
 
 # à partir du fichier python database.py
 from database import db
-from models import Source, User, UserAccess, Website, TaskRecord
+from models import Source, Tag, TaskRecord, User, UserAccess, Website
 from services.access_service import user_can_access_data
 from services.api_babbar import fetch_url_data
 from services.check_service import (
@@ -35,6 +35,7 @@ from services.check_service import (
 )
 from services.stats_service import save_stats_snapshot
 from services.utils_service import check_anchor_presence
+from services.utils_service import couleur_aleatoire_unique
 
 sites_routes = Blueprint("sites_routes", __name__)
 
@@ -220,9 +221,8 @@ def delete_site(site_id):
 
         db.session.delete(site_to_delete)
         db.session.commit()
-
+        save_stats_snapshot(current_user.id)
         print("✅ Suppression réussie")
-
         return "", 204  # No Content
 
     except Exception as e:
@@ -266,6 +266,8 @@ def check_status(site_id):
         db.session.rollback()
         print(f"❌ Erreur lors de la vérification : {e}")
 
+    save_stats_snapshot(current_user.id)
+
     # Retourner la ligne mise à jour (HTMX) ou rediriger
     if request.headers.get("HX-Request"):
         return render_template("backlinks/_row.html", backlink=site)
@@ -277,16 +279,17 @@ def check_status(site_id):
 @sites_routes.route("/delete_all_sites", methods=["POST"])
 def delete_all_sites():
     from celery_app import celery
+
     records = TaskRecord.query.filter_by(user_id=current_user.id).all()
     for r in records:
         celery.control.revoke(r.task_id, terminate=True)
 
     TaskRecord.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
-    
+
     Website.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
-
+    save_stats_snapshot(current_user.id)
     flash("✅ Tous les sites ont été supprimés avec succès.", "success")
     return redirect(url_for("backlinks_routes.backlinks_list"))
 
@@ -323,6 +326,7 @@ def check_all_sites():
     except Exception as e:
         print(f"❌ [DEBUG] Erreur générale: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         flash(f"❌ Erreur : {e}", "danger")
 
@@ -344,28 +348,29 @@ def import_data():
             df = pd.read_excel(file)
             df.columns = [col.lower().strip() for col in df.columns]
 
-            # 🔥 Déduplication immédiate (gain énorme)
+            # 🔥 Déduplication immédiate
             df = df.drop_duplicates(subset=["url", "link_to_check"], keep="last")
 
-            # 🔥 Prétraitement des valeurs
+            # 🔥 Prétraitement
             df["url"] = df["url"].astype(str).str.strip()
             df["tag"] = df["tag"].astype(str).str.lower().str.strip()
-            df["plateforme"] = df["plateforme"].astype(str).str.strip()
+            df["plateforme"] = df["plateforme"].astype(str).str.lower().str.strip()
             df["link_to_check"] = df["link_to_check"].astype(str).str.strip()
             df["anchor_text"] = df["anchor_text"].astype(str).str.strip()
 
-            # 🔥 Charger TOUTES les URLs existantes en UNE SEULE REQUÊTE
+            # 🔥 Précharger Tags & Sources existants (ultra rapide)
+            existing_tags = {t.valeur.lower(): t for t in Tag.query.all()}
+            existing_sources = {s.nom.lower(): s for s in Source.query.all()}
+
+            # 🔥 Précharger les sites existants de l’utilisateur
             existing_sites = Website.query.filter_by(user_id=current_user.id).all()
-            lookup = {
-                (s.url, s.link_to_check): s
-                for s in existing_sites
-            }
+            lookup = {(s.url, s.link_to_check): s for s in existing_sites}
 
             new_sites = []
             updated_sites = []
             websites_to_check = []
 
-            # 🔥 Boucle ultra-optimisée
+            # 🔥 Boucle principale
             for _, row in df.iterrows():
                 url = row["url"]
                 if not url:
@@ -374,21 +379,58 @@ def import_data():
                 key = (url, row["link_to_check"])
                 domain = extract_domain(url)
 
-                if key in lookup:  # 🔄 update
+                tag_value = row["tag"] if row["tag"] else None
+                source_value = row["plateforme"] if row["plateforme"] else None
+
+                # -------------------------
+                # 🏷️ GESTION AUTO DES TAGS
+                # -------------------------
+                if tag_value:
+                    tag_key = tag_value.lower()
+
+                    if tag_key not in existing_tags:
+                        new_tag = Tag(
+                            valeur=tag_key,
+                            couleur=couleur_aleatoire_unique()
+                        )
+                        db.session.add(new_tag)
+                        existing_tags[tag_key] = new_tag
+
+                # ----------------------------------
+                # 🏭 GESTION AUTO DES SOURCES
+                # ----------------------------------
+                if source_value:
+                    source_key = source_value.lower()
+
+                    if source_key not in existing_sources:
+                        new_source = Source(nom=source_key)
+                        db.session.add(new_source)
+                        existing_sources[source_key] = new_source
+
+                # -------------------------
+                # 🔄 UPDATE d’un site existant
+                # -------------------------
+                if key in lookup:
                     site = lookup[key]
-                    site.tag = row["tag"] or site.tag
+
+                    site.tag = tag_value or site.tag
                     site.domains = domain or site.domains
-                    site.source_plateforme = row["plateforme"] or site.source_plateforme
+                    site.source_plateforme = source_value or site.source_plateforme
                     site.anchor_text = row["anchor_text"] or site.anchor_text
+
                     updated_sites.append(site)
-                else:  # 🆕 insert
+
+                # -------------------------
+                # 🆕 INSERT d’un nouveau site
+                # -------------------------
+                else:
                     site = Website(
                         url=url,
                         domains=domain,
-                        tag=row["tag"],
+                        tag=tag_value,
                         link_to_check=row["link_to_check"],
                         anchor_text=row["anchor_text"],
-                        source_plateforme=row["plateforme"],
+                        source_plateforme=source_value,
                         user_id=current_user.id,
                         first_checked=datetime.now(),
                     )
@@ -396,11 +438,13 @@ def import_data():
 
                 websites_to_check.append(site)
 
-            # 🔥 Commit global sites (insert + update)
+            # 🔥 Commit global (sites + nouveaux tags/sources)
             db.session.add_all(new_sites)
             db.session.commit()
 
-            # 🔥 Envoi Celery + TaskRecord batché
+            # -------------------------
+            # 🚀 Envoi des tâches Celery
+            # -------------------------
             from tasks import check_single_site
 
             task_records = []
@@ -408,7 +452,7 @@ def import_data():
                 task = check_single_site.apply_async(
                     args=[site.id],
                     queue="standard",
-                    priority=3,
+                    priority=3
                 )
                 task_records.append(
                     TaskRecord(task_id=task.id, user_id=current_user.id)
@@ -417,7 +461,10 @@ def import_data():
             db.session.add_all(task_records)
             db.session.commit()
 
-            flash("Import lancé 🚀 Les vérifications se font en arrière-plan.", "success")
+            flash(
+                "Import lancé 🚀 Les vérifications se font en arrière-plan.",
+                "success"
+            )
 
         except Exception as e:
             db.session.rollback()
@@ -426,10 +473,12 @@ def import_data():
 
         return redirect(url_for("backlinks_routes.backlinks_list"))
 
-    # GET → liste normale
+    # GET → Affichage liste
     websites = Website.query.filter_by(user_id=current_user.id).all()
     stats = calculate_stats(current_user.id)
     sources = Source.query.all()
+
+    save_stats_snapshot(current_user.id)
 
     return render_template(
         "backlinks/list.html",
@@ -442,8 +491,23 @@ def import_data():
         sources=sources,
     )
 
+def calculate_stats(user_id):
+    websites = Website.query.filter_by(user_id=user_id).all()
+    total = len(websites)
+    follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
+    indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")
+    stats = {
+        "total": total,
+        "follow": follow_count,
+        "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
+        "indexed": indexed_count,
+        "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
+    }
+    return stats
 
-if False : 
+
+if False:
+
     @sites_routes.route("/import", methods=["GET", "POST"])
     def import_data():
         if request.method == "POST":
@@ -476,7 +540,9 @@ if False :
                     if site:
                         site.tag = tag or site.tag
                         site.domains = domain or site.domains
-                        site.source_plateforme = source_plateforme or site.source_plateforme
+                        site.source_plateforme = (
+                            source_plateforme or site.source_plateforme
+                        )
                         site.anchor_text = anchor_text or site.anchor_text
                     else:
                         site = Website(
@@ -502,9 +568,7 @@ if False :
 
                 for site in websites_to_check:
                     task = check_single_site.apply_async(
-                        args=[site.id],
-                        queue="standard",
-                        priority=3
+                        args=[site.id], queue="standard", priority=3
                     )
 
                     task_records.append(
@@ -515,9 +579,9 @@ if False :
                 db.session.add_all(task_records)
                 db.session.commit()
 
-
                 flash(
-                    "Import lancé 🚀 Les vérifications se font en arrière-plan.", "success"
+                    "Import lancé 🚀 Les vérifications se font en arrière-plan.",
+                    "success",
                 )
 
             except Exception as e:
@@ -542,21 +606,6 @@ if False :
             order="desc",
             sources=sources,
         )
-
-
-def calculate_stats(user_id):
-    websites = Website.query.filter_by(user_id=user_id).all()
-    total = len(websites)
-    follow_count = sum(1 for w in websites if w.link_follow_status == "follow")
-    indexed_count = sum(1 for w in websites if w.google_index_status == "indexed")
-    stats = {
-        "total": total,
-        "follow": follow_count,
-        "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
-        "indexed": indexed_count,
-        "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
-    }
-    return stats
 
 
 # bouton pour exporter les données en CSV
@@ -657,114 +706,148 @@ def export_data():
     )
 
 
+#-------------------------------------------------------------------------------------------------------------------------------------------------
+#                                                DONNÉES PARTAGÉES
+#-------------------------------------------------------------------------------------------------------------------------------------------------
+
+def get_filtered_query_for_owner(owner_id):
+    """Construit une requête filtrée pour un utilisateur dont on consulte les données partagées."""
+
+    query = Website.query.filter_by(user_id=owner_id)
+
+    # -------- Filtres TAG & SOURCE --------
+    filter_tag = request.args.get("tag", "").strip()
+    filter_source = request.args.get("source", "").strip()
+
+    if filter_tag:
+        query = query.filter(func.lower(Website.tag) == filter_tag.lower())
+
+    if filter_source:
+        query = query.filter(func.lower(Website.source_plateforme) == filter_source.lower())
+
+    # -------- Recherche textuelle --------
+    q = request.args.get("q", "").strip()
+    if q:
+        query = query.filter(
+            (Website.url.ilike(f"%{q}%")) |
+            (Website.anchor_text.ilike(f"%{q}%"))
+        )
+
+    # -------- Follow / NoFollow --------
+    follow = request.args.get("follow", "all")
+    if follow == "true":
+        query = query.filter(Website.link_follow_status == "follow")
+    elif follow == "false":
+        query = query.filter(Website.link_follow_status == "nofollow")
+
+    # -------- Indexation --------
+    indexed = request.args.get("indexed", "all")
+    if indexed == "true":
+        query = query.filter(Website.google_index_status == "Indexé !")
+    elif indexed == "false":
+        query = query.filter(Website.google_index_status != "Indexé !")
+
+    # -------- TRI --------
+    sort = request.args.get("sort", "created")
+    order = request.args.get("order", "desc")
+
+    if sort == "page_value":
+        order_by = Website.page_value.desc() if order == "desc" else Website.page_value.asc()
+    elif sort == "page_trust":
+        order_by = Website.page_trust.desc() if order == "desc" else Website.page_trust.asc()
+    elif sort == "domain":
+        order_by = Website.url.desc() if order == "desc" else Website.url.asc()
+    else:
+        order_by = Website.id.desc() if order == "desc" else Website.id.asc()
+
+    return query.order_by(order_by)
+
+
 @sites_routes.route("/shared_data", methods=["GET"])
 @login_required
 def shared_data():
-    """
-    Page permettant de consulter les données partagées par d'autres utilisateurs.
-    L'utilisateur peut sélectionner un propriétaire (owner) parmi ceux qui lui ont donné accès.
-    """
 
-    # Étape 1 : récupérer tous les utilisateurs qui m'ont partagé leurs données
     shared_with_me = (
         UserAccess.query.options(joinedload(UserAccess.owner))
         .filter_by(grantee_id=current_user.id)
         .all()
     )
 
-    # Étape 2 : récupérer éventuellement l'utilisateur sélectionné
     selected_owner_id = request.args.get("owner_id", type=int)
     backlinks = []
     selected_owner = None
     current_page = 1
     total_pages = 1
-    sort = "created"
-    order = "desc"
-    stats = None  # rien tant qu'il n'y a pas d'owner
+    stats = None
 
-    print(f"🔍 DEBUG - selected_owner_id: {selected_owner_id}")  # ✅ DEBUG
+    filters = {
+        "q": request.args.get("q", ""),
+        "tag": request.args.get("tag", ""),
+        "source": request.args.get("source", ""),
+        "follow": request.args.get("follow", "all"),
+        "indexed": request.args.get("indexed", "all"),
+        "sort": request.args.get("sort", "created"),
+        "order": request.args.get("order", "desc"),
+    }
+
+    pagination_base_url = None   # ✅ important : valeur par défaut
 
     if selected_owner_id:
-        selected_owner = User.query.get(selected_owner_id)
-        if not selected_owner:
-            abort(404)
+        selected_owner = User.query.get_or_404(selected_owner_id)
 
-        # Vérifier le droit d'accès
         if not user_can_access_data(current_user.id, selected_owner.id):
             abort(403)
 
-        # 🔹 Pagination simple (10 par page)
         per_page = 10
         page = request.args.get("page", 1, type=int)
 
-        query = Website.query.filter_by(user_id=selected_owner.id).order_by(
-            Website.last_checked.desc()
-        )
+        query = get_filtered_query_for_owner(selected_owner.id)
+
         total_items = query.count()
-        total_pages = ceil(total_items / per_page) if total_items > 0 else 1
+        total_pages = ceil(total_items / per_page) if total_items else 1
 
         backlinks = query.offset((page - 1) * per_page).limit(per_page).all()
         current_page = page
 
-        # Qualité pour chaque site
-        for site in backlinks:
-            trust = float(site.page_trust or 0)
-            value = float(site.page_value or 0)
+        # ----- STATISTIQUES FILTRÉES -----
+        stats_query = get_filtered_query_for_owner(selected_owner.id).order_by(None)
 
-            if trust or value:
-                site.quality = round((trust * 0.6) + (value * 0.4), 1)
-            else:
-                site.quality = 0
+        total = stats_query.count()
 
-            print(
-                f"🔍 DEBUG - Backlink {site.id}: "
-                f"quality={site.quality}, PV={site.page_value}, PT={site.page_trust}"
-            )
+        if total:
+            follow_count = stats_query.filter(Website.link_follow_status == "follow").count()
+            indexed_count = stats_query.filter(Website.google_index_status == "Indexé !").count()
 
-        # ✅ CALCUL DES STATISTIQUES (sur TOUS les sites du owner)
-        all_sites = Website.query.filter_by(user_id=selected_owner.id)
-        total = all_sites.count()
+            avg_value = stats_query.with_entities(func.avg(Website.page_value)).scalar() or 0
+            avg_trust = stats_query.with_entities(func.avg(Website.page_trust)).scalar() or 0
 
-        print(f"🔍 DEBUG - total sites: {total}")  # ✅ DEBUG
-
-        if total > 0:
-            follow_count = all_sites.filter(
-                Website.link_follow_status == "follow"
-            ).count()
-            indexed_count = all_sites.filter(
-                Website.google_index_status == "Indexé !"
-            ).count()
-
-            # Moyennes brutes
-            avg_value_db = all_sites.with_entities(
-                func.avg(Website.page_value)
-            ).scalar()
-            avg_trust_db = all_sites.with_entities(
-                func.avg(Website.page_trust)
-            ).scalar()
-
-            # Conversion sécurisée en float
-            avg_value = float(avg_value_db) if avg_value_db is not None else 0
-            avg_trust = float(avg_trust_db) if avg_trust_db is not None else 0
-
-            avg_quality = round((avg_trust * 0.6) + (avg_value * 0.4), 1)
+            avg_quality = round((float(avg_trust) * 0.6) + (float(avg_value) * 0.4), 1)
         else:
             follow_count = indexed_count = avg_value = avg_trust = avg_quality = 0
 
         stats = {
             "total": total,
             "follow": follow_count,
-            "follow_percentage": f"{(follow_count / total * 100) if total > 0 else 0:.1f}",
+            "follow_percentage": f"{(follow_count / total * 100) if total else 0:.1f}",
             "indexed": indexed_count,
-            "indexed_percentage": f"{(indexed_count / total * 100) if total > 0 else 0:.1f}",
+            "indexed_percentage": f"{(indexed_count / total * 100) if total else 0:.1f}",
             "avg_quality": f"{avg_quality:.1f}",
             "avg_value": f"{avg_value:.1f}",
             "avg_trust": f"{avg_trust:.1f}",
         }
 
-        print(f"🔍 DEBUG - stats dict: {stats}")  # ✅ DEBUG
-
-    print(f"🔍 DEBUG - stats final: {stats}")  # ✅ DEBUG
+        # ----- ⚡ CRÉATION DU BASE_URL UNIQUEMENT SI OWNER -----
+        pagination_base_url = url_for(
+            "sites_routes.shared_data_table_partial",
+            owner_id=selected_owner.id,
+            q=filters["q"],
+            tag=filters["tag"],
+            source=filters["source"],
+            follow=filters["follow"],
+            indexed=filters["indexed"],
+            sort=filters["sort"],
+            order=filters["order"],
+        )
 
     return render_template(
         "shared/shared_data.html",
@@ -773,18 +856,13 @@ def shared_data():
         backlinks=backlinks,
         current_page=current_page,
         total_pages=total_pages,
-        sort=sort,
-        order=order,
         stats=stats,
-        # 👉 IMPORTANT : base de pagination = route PARTIELLE
-        pagination_base_url=(
-            url_for(
-                "sites_routes.shared_data_table_partial", owner_id=selected_owner.id
-            )
-            if selected_owner
-            else None
-        ),
+        filters=filters,
+        tags=Tag.query.all(),
+        sources=Source.query.all(),
+        pagination_base_url=pagination_base_url,
     )
+
 
 
 @sites_routes.route("/shared_data/table", methods=["GET"])
@@ -813,9 +891,8 @@ def shared_data_table_partial():
     per_page = 10
     page = request.args.get("page", 1, type=int)
 
-    query = Website.query.filter_by(user_id=selected_owner.id).order_by(
-        Website.last_checked.desc()
-    )
+    query = get_filtered_query_for_owner(selected_owner.id)
+
     total_items = query.count()
     total_pages = ceil(total_items / per_page) if total_items > 0 else 1
 
@@ -827,13 +904,23 @@ def shared_data_table_partial():
         value = float(site.page_value or 0)
         site.quality = round((trust * 0.6) + (value * 0.4), 1) if trust or value else 0
 
+    base_url = url_for(
+        "sites_routes.shared_data_table_partial",
+        owner_id=selected_owner.id,
+        q=request.args.get("q", ""),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
+        follow=request.args.get("follow", "all"),
+        indexed=request.args.get("indexed", "all"),
+        sort=request.args.get("sort", "created"),
+        order=request.args.get("order", "desc"),
+    )
+
     return render_template(
         "backlinks/_table.html",
         backlinks=backlinks,
         current_page=page,
         total_pages=total_pages,
         selected_owner=selected_owner,
-        pagination_base_url=url_for(
-            "sites_routes.shared_data_table_partial", owner_id=selected_owner.id
-        ),
+        pagination_base_url=base_url,
     )

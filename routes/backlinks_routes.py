@@ -13,7 +13,17 @@ def get_filtered_query():
     """Construit la requête avec les filtres communs"""
     query = Website.query.filter_by(user_id=current_user.id)
 
-    # Filtres
+    # -------- Filtres TAG & SOURCE --------
+    filter_tag = request.args.get("tag", "").strip()
+    filter_source = request.args.get("source", "").strip()
+
+    if filter_tag:
+        query = query.filter(func.lower(Website.tag) == filter_tag.lower())
+
+    if filter_source:
+        query = query.filter(func.lower(Website.source_plateforme) == filter_source.lower())
+
+    # -------- Filtres Déjà existants --------
     q = request.args.get("q", "").strip()
     follow = request.args.get("follow", "all")
     indexed = request.args.get("indexed", "all")
@@ -59,6 +69,7 @@ def get_filtered_query():
     return query
 
 
+
 @backlinks_routes.route("/backlinks")
 @login_required
 def backlinks_list():
@@ -79,21 +90,16 @@ def backlinks_list():
         else:
             site.quality = 0
 
-    # Statistiques (sur TOUTE la base, pas juste la page actuelle)
-    all_sites = Website.query.filter_by(user_id=current_user.id)
-    total = all_sites.count()
+    # Statistiques FILTRÉES si tag/source/search/follow/indexed actifs
+    stats_query = get_filtered_query().order_by(None)
+    total = stats_query.count()
 
     if total > 0:
-        follow_count = all_sites.filter(Website.link_follow_status == "follow").count()
-        indexed_count = all_sites.filter(
-            Website.google_index_status == "Indexé !"
-        ).count()
-        avg_value = all_sites.with_entities(func.avg(Website.page_value)).scalar() or 0
-        avg_trust = all_sites.with_entities(func.avg(Website.page_trust)).scalar() or 0
-        avg_trust = float(avg_trust) if avg_trust is not None else 0
-        avg_value = float(avg_value) if avg_value is not None else 0
-
-        avg_quality = round((avg_trust * 0.6) + (avg_value * 0.4), 1)
+        follow_count = stats_query.filter(Website.link_follow_status == "follow").count()
+        indexed_count = stats_query.filter(Website.google_index_status == "Indexé !").count()
+        avg_value = stats_query.with_entities(func.avg(Website.page_value)).scalar() or 0
+        avg_trust = stats_query.with_entities(func.avg(Website.page_trust)).scalar() or 0
+        avg_quality = round((float(avg_trust) * 0.6) + (float(avg_value) * 0.4), 1)
     else:
         follow_count = indexed_count = avg_value = avg_trust = avg_quality = 0
 
@@ -117,7 +123,19 @@ def backlinks_list():
         "indexed": request.args.get("indexed", "all"),
         "sort": request.args.get("sort", "created"),
         "order": request.args.get("order", "desc"),
+        "tag": request.args.get("tag", ""),
+        "source": request.args.get("source", ""),
     }
+
+    pagination_base_url = url_for("backlinks_routes.backlinks_table_partial", 
+        q=request.args.get("q", ""),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
+        follow=request.args.get("follow", "all"),
+        indexed=request.args.get("indexed", "all"),
+        sort=request.args.get("sort", "created"),
+        order=request.args.get("order", "desc"),
+    )
 
     return render_template(
         "backlinks/list.html",
@@ -128,9 +146,9 @@ def backlinks_list():
         filters=filters,
         tags=tags,
         sources=sources,
-        # 👉 La pagination HTMX doit appeler la route partielle
-        pagination_base_url=url_for("backlinks_routes.backlinks_table_partial"),
+        pagination_base_url=pagination_base_url,
     )
+
 
 
 @backlinks_routes.route("/backlinks/partial/table")
@@ -159,11 +177,20 @@ def backlinks_table_partial():
         else:
             site.quality = 0
 
+    base_url = url_for("backlinks_routes.backlinks_table_partial",
+        q=request.args.get("q", ""),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
+        follow=request.args.get("follow", "all"),
+        indexed=request.args.get("indexed", "all"),
+        sort=request.args.get("sort", "created"),
+        order=request.args.get("order", "desc"),
+    )
+
     return render_template(
         "backlinks/_table.html",
         backlinks=pagination.items,
         current_page=pagination.page,
         total_pages=pagination.pages or 1,
-        pagination_base_url=url_for("backlinks_routes.backlinks_table_partial"),
+        pagination_base_url=base_url,
     )
-

@@ -17,7 +17,7 @@ class Website(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     url = db.Column(db.String(250), nullable=False)
-    domains = db.Column(db.String(250), nullable=False)
+    domains = db.Column(db.String(250), nullable=True)
     status_code = db.Column(db.Integer, nullable=True)
     tag = db.Column(db.String(50), nullable=True)
     source_plateforme = db.Column(db.String(100))

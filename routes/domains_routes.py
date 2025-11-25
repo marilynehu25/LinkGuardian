@@ -2,13 +2,38 @@ from collections import defaultdict
 from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, url_for, redirect
+from sqlalchemy import func
 from flask_login import current_user, login_required
 import json
 
-from models import Website
+from models import Website, Tag , Source
 
 domains_routes = Blueprint("domains_routes", __name__)
+
+def get_filtered_domains_query():
+    """Construit la requête filtrée pour la page Domains, comme Backlinks."""
+    query = Website.query.filter_by(user_id=current_user.id)
+
+    # ----------- Filtres TAG & SOURCE ----------
+    filter_tag = request.args.get("tag", "").strip()
+    filter_source = request.args.get("source", "").strip()
+
+    if filter_tag:
+        query = query.filter(func.lower(Website.tag) == filter_tag.lower())
+
+    if filter_source:
+        query = query.filter(func.lower(Website.source_plateforme) == filter_source.lower())
+
+    # ----------- Recherche textuelle (si tu veux ajouter plus tard) ----------
+    q = request.args.get("q", "").strip()
+    if q:
+        query = query.filter(
+            (Website.url.ilike(f"%{q}%"))
+            | (Website.anchor_text.ilike(f"%{q}%"))
+        )
+
+    return query
 
 
 @domains_routes.route("/domains")
@@ -20,7 +45,9 @@ def domain_stats():
     page = request.args.get("page", 1, type=int)
     per_page = 10  # Nombre de domaines par page
 
-    websites = Website.query.filter(Website.user_id == current_user.id).all()
+    query = get_filtered_domains_query()
+    websites = query.all()
+
     if not websites:
         return render_template(
             "domains/list.html",
@@ -214,6 +241,24 @@ def domain_stats():
         ][: len(top_domains)],
     }
 
+    tags = Tag.query.all()
+    sources = Source.query.all()
+
+    filters = {
+            "tag": request.args.get("tag", ""),
+            "source": request.args.get("source", ""),
+        }
+    
+    pagination_base_url = url_for("domains_routes.domains_table_partial", 
+    q=request.args.get("q", ""),
+    tag=request.args.get("tag", ""),
+    source=request.args.get("source", ""),
+    follow=request.args.get("follow", "all"),
+    indexed=request.args.get("indexed", "all"),
+    sort=request.args.get("sort", "created"),
+    order=request.args.get("order", "desc"),
+    )
+
     return render_template(
         "domains/list.html",
         domains=paginated_domains,
@@ -231,6 +276,10 @@ def domain_stats():
         top_domains_chart_json=json.dumps(top_domains_chart),
         current_page=page,
         total_pages=total_pages,
+        filters=filters,
+        tags = tags,
+        sources = sources,
+        pagination_base_url = pagination_base_url,
     )
 
 
@@ -239,10 +288,17 @@ def domain_stats():
 def domains_table_partial():
     """Retourne uniquement la table des domaines pour HTMX"""
 
+    # Si ce n’est pas une requête HTMX, on redirige vers la page complète
+    if not request.headers.get("HX-Request"):
+        page = request.args.get("page", 1, type=int)
+        return redirect(f"/domains?page={page}")
+
     page = request.args.get("page", 1, type=int)
     per_page = 10
 
-    websites = Website.query.filter(Website.user_id == current_user.id).all()
+    query = get_filtered_domains_query()
+    websites = query.all()
+
     if not websites:
         return render_template(
             "domains/_domains_table.html",
@@ -330,9 +386,20 @@ def domains_table_partial():
 
     total_pages = (total_domains_count + per_page - 1) // per_page
 
+    base_url = url_for("domains_routes.domains_table_partial",
+    q=request.args.get("q", ""),
+    tag=request.args.get("tag", ""),
+    source=request.args.get("source", ""),
+    follow=request.args.get("follow", "all"),
+    indexed=request.args.get("indexed", "all"),
+    sort=request.args.get("sort", "created"),
+    order=request.args.get("order", "desc"),
+    )
+
     return render_template(
         "domains/_domains_table.html",
         domains=paginated_domains,
         current_page=page,
         total_pages=total_pages,
+        pagination_base_url=base_url,
     )

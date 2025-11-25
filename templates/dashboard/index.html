@@ -18,6 +18,45 @@
         
         <!-- Période de temps AVEC HTMX -->
         <div class="flex items-center space-x-4">
+
+            <select name="tag"
+                hx-get="/dashboard/content"
+                hx-trigger="change"
+                hx-target="#dashboard-content"
+                hx-swap="innerHTML"
+                hx-indicator="#loading-spinner"
+                hx-include="[name='range'], [name='source'], this"
+                class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary">
+
+                <option value="">Tous les tags</option>
+
+                {% for t in tags %}
+                    <option value="{{ t.valeur }}" 
+                        {% if filter_tag == t.valeur %}selected{% endif %}>
+                        {{ t.valeur }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <select name="source"
+                hx-get="/dashboard/content"
+                hx-trigger="change"
+                hx-target="#dashboard-content"
+                hx-swap="innerHTML"
+                hx-indicator="#loading-spinner"
+                hx-include="[name='range'], [name='tag'], this"
+                class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary">
+
+                <option value="">Toutes les sources</option>
+
+                {% for s in sources %}
+                    <option value="{{ s.nom }}"
+                        {% if filter_source == s.nom %}selected{% endif %}>
+                        {{ s.nom }}
+                    </option>
+                {% endfor %}
+            </select>
+
             <select name="range"
                     id="range-selector"
                     hx-get="/dashboard/content"
@@ -27,9 +66,10 @@
                     hx-indicator="#loading-spinner"
                     hx-include="this"
                     class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                <option value="7d" {% if range_param == '7d' %}selected{% endif %}>7 derniers jours</option>
-                <option value="30d" {% if range_param == '30d' %}selected{% endif %}>30 derniers jours</option>
-                <option value="90d" {% if range_param == '90d' %}selected{% endif %}>90 derniers jours</option>
+                        <option value="1m" {% if range_param == '1m' %}selected{% endif %}>Dernier mois</option>
+                        <option value="3m" {% if range_param == '3m' %}selected{% endif %}>3 derniers mois</option>
+                        <option value="6m" {% if range_param == '6m' %}selected{% endif %}>6 derniers mois</option>
+                        <option value="12m" {% if range_param == '12m' %}selected{% endif %}>12 derniers mois</option>
             </select>
             
             <!-- 

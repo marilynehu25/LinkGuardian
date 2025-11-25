@@ -1,14 +1,23 @@
 <!DOCTYPE html>
-<html lang="fr" class="dark">
-
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<html lang="fr">
 
 <head>
+
+    <!-- Fix Anti-Flash: appliquer immédiatement le thème avant TOUT -->
+    <script>
+        (function() {
+            const saved = localStorage.getItem('darkMode');
+            const dark = saved === null ? true : JSON.parse(saved);
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            document.documentElement.classList.toggle('dark', dark);
+        })();
+    </script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}LinkGuardian - Suivi de Netlinking{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS (doit venir APRES l'initialisation du thème) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -26,11 +35,11 @@
         }
     </script>
     
+    <!-- Alpine.js (doit venir APRÈS le fix anti-flash) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    
-    <!-- Alpine.js -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
@@ -38,7 +47,6 @@
     <!-- Themes CSS -->
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="stylesheet" href="/static/css/themes.css">
-    
     
     <!-- Custom CSS -->
     <style>
@@ -52,8 +60,7 @@
         .badge-info { @apply bg-primary/20 text-primary; }
         .btn-primary { @apply bg-primary hover:bg-primary/90 text-white rounded-xl px-4 py-2 font-medium transition-all; }
         .btn-secondary { @apply bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-xl px-4 py-2 font-medium transition-all; }
-        
-        /* Thème clair - Classes adaptatives */
+
         [data-theme="light"] .bg-gray-900 { @apply bg-white border-gray-200; }
         [data-theme="light"] .bg-gray-800 { @apply bg-gray-50; }
         [data-theme="light"] .bg-gray-700 { @apply bg-gray-100; }
@@ -69,32 +76,35 @@
         [data-theme="light"] .hover\\:text-white:hover { @apply text-gray-900; }
         [data-theme="light"] .btn-secondary { @apply bg-gray-200 hover:bg-gray-300 text-gray-700; }
 
-        /* Désactiver la sélection de texte sur double-clic */
         .bg-gray-900.rounded-2xl {
             user-select: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
         }
 
-        /* Ou plus spécifiquement sur le tableau */
         #backlinks-table table {
             user-select: none;
         }
     </style>
 </head>
 
-<body class="min-h-screen transition-colors overflow-x-hidden" 
-      x-data="{ 
+
+<body 
+    class="min-h-screen transition-colors overflow-x-hidden bg-slate-900 text-gray-200"
+    x-data="{ 
         sidebarOpen: false, 
         darkMode: JSON.parse(localStorage.getItem('darkMode') ?? 'true'),
         init() {
-          this.$watch('darkMode', value => localStorage.setItem('darkMode', JSON.stringify(value)));
+            this.$watch('darkMode', value => localStorage.setItem('darkMode', JSON.stringify(value)));
         }
-      }" 
-      :data-theme="darkMode ? 'dark' : 'light'"
-      :class="darkMode ? 'bg-slate-900 text-gray-200' : 'bg-gray-50 text-gray-900'"
-      x-init="init()">
+    }" 
+    :data-theme="darkMode ? 'dark' : 'light'"
+    x-init="
+        if (darkMode) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    "
+>
     
     <!-- Navigation Top Bar -->
     <nav class="bg-gray-900 border-b border-gray-700 px-4 py-3 fixed top-0 left-0 right-0 z-50">

@@ -179,68 +179,104 @@
 </div>
 {% endmacro %}
 
-<!-- Macro pour la pagination -->
 {% macro pagination(current_page, total_pages, base_url, target_id, owner_id=None, public_url=None) %}
 <div class="flex items-center justify-between">
     <div class="text-sm text-gray-400">
         Page {{ current_page }} sur {{ total_pages }}
     </div>
-    
+
     <div class="flex items-center space-x-2">
-        {# Fonction utilitaire pour gérer ? ou & #}
         {% set sep = '&' if '?' in base_url else '?' %}
 
-        <!-- Bouton Précédent -->
+        {# === BOUTON PRÉCÉDENT FIXE === #}
         {% if current_page > 1 %}
-        <button 
-            hx-get="{{ base_url }}{{ sep }}page={{ current_page|int - 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
-            hx-target="#{{ target_id }}" 
-            hx-swap="outerHTML"
-            hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ current_page|int - 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
-            class="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors">
-            Précédent
-        </button>
+            <button 
+                hx-get="{{ base_url }}{{ sep }}page={{ current_page-1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+                hx-target="#{{ target_id }}" 
+                hx-swap="outerHTML"
+                hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ current_page-1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+                class="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors
+                       w-[110px] text-center">
+                Précédent
+            </button>
         {% else %}
-        <span class="px-3 py-2 text-sm bg-gray-800 text-gray-600 rounded-lg cursor-not-allowed">
-            Précédent
-        </span>
+            <span class="px-3 py-2 text-sm bg-gray-800 text-gray-600 rounded-lg cursor-not-allowed
+                         w-[110px] text-center">
+                Précédent
+            </span>
         {% endif %}
-        
-        <!-- Numéros de page -->
+
+        {# === NUMÉROS FIXES (5 MAX) === #}
         <div class="flex items-center space-x-1">
-            {% for p in range(1, total_pages + 1) %}
+
+            {% set window = 5 %}
+            {% set half = window // 2 %}
+
+            {# Position idéale #}
+            {% set start = current_page - half %}
+            {% set end = current_page + half %}
+
+            {# Ajustement au début #}
+            {% if start < 1 %}
+                {% set end = end + (1 - start) %}
+                {% set start = 1 %}
+            {% endif %}
+
+            {# Ajustement à la fin #}
+            {% if end > total_pages %}
+                {% set start = start - (end - total_pages) %}
+                {% set end = total_pages %}
+                {% if start < 1 %}
+                    {% set start = 1 %}
+                {% endif %}
+            {% endif %}
+
+            {# Toujours max 5 numéros #}
+            {% if end - start + 1 > window %}
+                {% set end = start + window - 1 %}
+            {% endif %}
+
+            {% for p in range(start, end + 1) %}
+
                 {% if p == current_page %}
-                    <span class="px-3 py-2 text-sm font-bold bg-primary text-white rounded-lg">{{ p }}</span>
-                {% elif p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
+                    <span class="px-3 py-2 text-sm font-bold bg-primary text-white rounded-lg
+                                 w-[48px] text-center">
+                        {{ p }}
+                    </span>
+
+                {% else %}
                     <button 
                         hx-get="{{ base_url }}{{ sep }}page={{ p }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
                         hx-target="#{{ target_id }}"
                         hx-swap="outerHTML"
                         hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ p }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
-                        class="px-3 py-2 text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 rounded-lg transition-colors">
+                        class="px-3 py-2 text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 rounded-lg 
+                               transition-colors w-[48px] text-center">
                         {{ p }}
                     </button>
-                {% elif p == current_page - 3 or p == current_page + 3 %}
-                    <span class="px-2 text-gray-500">...</span>
                 {% endif %}
+
             {% endfor %}
         </div>
-        
-        <!-- Bouton Suivant -->
+
+        {# === BOUTON SUIVANT FIXE === #}
         {% if current_page < total_pages %}
-        <button 
-            hx-get="{{ base_url }}{{ sep }}page={{ current_page|int + 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
-            hx-target="#{{ target_id }}" 
-            hx-swap="outerHTML"
-            hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ current_page|int + 1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
-            class="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors">
-            Suivant
-        </button>
+            <button 
+                hx-get="{{ base_url }}{{ sep }}page={{ current_page+1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+                hx-target="#{{ target_id }}" 
+                hx-swap="outerHTML"
+                hx-push-url="{{ (public_url or base_url) }}{{ sep }}page={{ current_page+1 }}{% if owner_id %}&owner_id={{ owner_id }}{% endif %}"
+                class="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors
+                       w-[110px] text-center">
+                Suivant
+            </button>
         {% else %}
-        <span class="px-3 py-2 text-sm bg-gray-800 text-gray-600 rounded-lg cursor-not-allowed">
-            Suivant
-        </span>
+            <span class="px-3 py-2 text-sm bg-gray-800 text-gray-600 rounded-lg cursor-not-allowed
+                         w-[110px] text-center">
+                Suivant
+            </span>
         {% endif %}
+
     </div>
 </div>
 {% endmacro %}

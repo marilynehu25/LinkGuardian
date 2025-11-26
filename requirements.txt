@@ -8,6 +8,7 @@ Flask_Login==0.6.3
 Flask_Migrate==4.0.5
 Flask-Session==0.8.0
 Flask-SocketIO==5.3.6
+Flask-Mail==0.10.0
 flask_sqlalchemy==3.1.1
 google_search_results==2.4.2
 openpyxl==3.1.2

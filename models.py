@@ -11,16 +11,16 @@ from database import db
 
 
 class Website(db.Model):
-#    __table_args__ = (
-#        UniqueConstraint(
-#            "user_id",
-#            "url",
-#            "link_to_check",
-#            "anchor_text",
-#            "source_plateforme",
-#            name="uix_url_linktocheck",
-#        ),
-#    )
+    #    __table_args__ = (
+    #        UniqueConstraint(
+    #            "user_id",
+    #            "url",
+    #            "link_to_check",
+    #            "anchor_text",
+    #            "source_plateforme",
+    #            name="uix_url_linktocheck",
+    #        ),
+    #    )
 
     id = db.Column(db.Integer, primary_key=True)
     url = db.Column(db.String(250), nullable=False)

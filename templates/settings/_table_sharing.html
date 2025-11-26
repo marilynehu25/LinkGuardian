@@ -8,6 +8,72 @@
         )}}
     </h2>
 
+    <!-- Formulaire d’ajout d’un nouveau partage -->
+    <div class="mt-6 bg-gray-900 p-6 rounded-2xl shadow-lg">
+        <h3 class="text-white font-semibold mb-4">Ajouter un partage</h3>
+
+        <form method="POST"
+            action="{{ url_for('config_routes.add_share') }}"
+            x-data="{ owner: '', grantee: '' }"
+            @submit.prevent="
+                if (owner === grantee) {
+                    alert('⚠️ Le propriétaire et le bénéficiaire doivent être différents.');
+                } else { $el.submit(); }
+            "
+            class="flex flex-col md:flex-row gap-4 items-center">
+
+            {% if current_user.role in ["admin", "main_admin"] %}
+                <!-- 🧭 Admin ou Super-Admin : peut choisir le propriétaire -->
+                <select name="owner_id"
+                        x-model="owner"
+                        required
+                        class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    
+                    <option value="">Propriétaire des données…</option>
+
+                    {% if current_user.role == "main_admin" %}
+                        {# 👑 Super-admin : voit tout le monde #}
+                        {% for user in users %}
+                            <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                        {% endfor %}
+                    
+                    {% elif current_user.role == "admin" %}
+                        {# 🔒 Admin normal : ne voit que les utilisateurs simples #}
+                        {% for user in users %}
+                            {% if user.role == "user" %}
+                                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </select>
+
+            {% else %}
+                {# 🔹 Utilisateur simple : propriétaire = lui-même #}
+                <input type="hidden" name="owner_id" value="{{ current_user.id }}">
+            {% endif %}
+
+            <!-- 👥 Sélection du bénéficiaire -->
+            <select name="grantee_id"
+                    x-model="grantee"
+                    required
+                    size="1"
+                    class="flex-1 max-h-[250px] overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 appearance-none cursor-pointer hover:border-gray-600 transition-all">
+                <option value="">Donner accès à…</option>
+
+                {% for user in users %}
+                    <option value="{{ user.id }}">
+                        {{ user.first_name }} {{ user.last_name }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <button type="submit"
+                    class="px-4 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-all">
+                Accorder l’accès
+            </button>
+        </form>
+    </div>
+
     <!-- Tableau avec défilement -->
     <div class="bg-gray-900 rounded-2xl overflow-hidden shadow-lg">
         <!-- Conteneur scrollable -->
@@ -78,72 +144,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
-
-    <!-- Formulaire d’ajout d’un nouveau partage -->
-    <div class="mt-6 bg-gray-900 p-6 rounded-2xl shadow-lg">
-        <h3 class="text-white font-semibold mb-4">Ajouter un partage</h3>
-
-        <form method="POST"
-            action="{{ url_for('config_routes.add_share') }}"
-            x-data="{ owner: '', grantee: '' }"
-            @submit.prevent="
-                if (owner === grantee) {
-                    alert('⚠️ Le propriétaire et le bénéficiaire doivent être différents.');
-                } else { $el.submit(); }
-            "
-            class="flex flex-col md:flex-row gap-4 items-center">
-
-            {% if current_user.role in ["admin", "main_admin"] %}
-                <!-- 🧭 Admin ou Super-Admin : peut choisir le propriétaire -->
-                <select name="owner_id"
-                        x-model="owner"
-                        required
-                        class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                    
-                    <option value="">Propriétaire des données…</option>
-
-                    {% if current_user.role == "main_admin" %}
-                        {# 👑 Super-admin : voit tout le monde #}
-                        {% for user in users %}
-                            <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
-                        {% endfor %}
-                    
-                    {% elif current_user.role == "admin" %}
-                        {# 🔒 Admin normal : ne voit que les utilisateurs simples #}
-                        {% for user in users %}
-                            {% if user.role == "user" %}
-                                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
-                            {% endif %}
-                        {% endfor %}
-                    {% endif %}
-                </select>
-
-            {% else %}
-                {# 🔹 Utilisateur simple : propriétaire = lui-même #}
-                <input type="hidden" name="owner_id" value="{{ current_user.id }}">
-            {% endif %}
-
-            <!-- 👥 Sélection du bénéficiaire -->
-            <select name="grantee_id"
-                    x-model="grantee"
-                    required
-                    size="1"
-                    class="flex-1 max-h-[250px] overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 appearance-none cursor-pointer hover:border-gray-600 transition-all">
-                <option value="">Donner accès à…</option>
-
-                {% for user in users %}
-                    <option value="{{ user.id }}">
-                        {{ user.first_name }} {{ user.last_name }}
-                    </option>
-                {% endfor %}
-            </select>
-
-            <button type="submit"
-                    class="px-4 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-all">
-                Accorder l’accès
-            </button>
-        </form>
     </div>
 
 

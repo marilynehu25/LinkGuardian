@@ -20,6 +20,8 @@ from sqlalchemy.orm import joinedload
 from models import UserAccess
 from sqlalchemy import or_
 
+from routes.auth_routes import is_strong_password
+
 config_bp = Blueprint("config_routes", __name__)
 
 
@@ -300,14 +302,23 @@ def change_user_password(user_id):
     try:
         user = User.query.get_or_404(user_id)
 
-        # Récupérer le nouveau mot de passe
         new_password = request.form.get("new_password")
 
-        if not new_password or len(new_password) < 6:
-            flash("Le mot de passe doit contenir au moins 6 caractères.", "error")
+        # Vérification présence
+        if not new_password:
+            flash("Le mot de passe est requis.", "error")
             return redirect(url_for("config_routes.configuration", tab="admin"))
 
-        # Changer le mot de passe
+        # Vérification complexité
+        if not is_strong_password(new_password):
+            flash(
+                "Le mot de passe doit contenir au minimum 8 caractères, "
+                "une majuscule, une minuscule, un chiffre et un symbole.",
+                "error"
+            )
+            return redirect(url_for("config_routes.configuration", tab="admin"))
+
+        # Mise à jour du mot de passe
         user.set_password(new_password)
         db.session.commit()
 
@@ -361,7 +372,6 @@ def delete_user(user_id):
 def change_own_password():
     """Permet à l'utilisateur connecté de changer son propre mot de passe"""
     try:
-        # Récupérer les données du formulaire
         current_password = request.form.get("current_password")
         new_password = request.form.get("new_password")
         confirm_password = request.form.get("confirm_password")
@@ -371,18 +381,17 @@ def change_own_password():
             flash("Tous les champs sont requis.", "error")
             return redirect(url_for("config_routes.configuration", tab="account"))
 
-        # Validation : vérifier que le nouveau mot de passe a au moins 6 caractères
-        if len(new_password) < 6:
-            flash(
-                "Le nouveau mot de passe doit contenir au moins 6 caractères.", "error"
-            )
+        # Verification : mots de passe identiques
+        if new_password != confirm_password:
+            flash("Le nouveau mot de passe et la confirmation ne correspondent pas.", "error")
             return redirect(url_for("config_routes.configuration", tab="account"))
 
-        # Validation : vérifier que le nouveau mot de passe et la confirmation correspondent
-        if new_password != confirm_password:
+        # Vérification complexité
+        if not is_strong_password(new_password):
             flash(
-                "Le nouveau mot de passe et la confirmation ne correspondent pas.",
-                "error",
+                "Le nouveau mot de passe doit contenir au minimum 8 caractères, "
+                "une majuscule, une minuscule, un chiffre et un symbole.",
+                "error"
             )
             return redirect(url_for("config_routes.configuration", tab="account"))
 

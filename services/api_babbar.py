@@ -73,10 +73,10 @@ def fetch_url_data(url_to_check, async_mode=True):
                 data = response.json()
                 print(f"Données reçues de l'API pour {url_to_check}: {data}")
 
-                update_website_data(url_to_check, data)
-                db.session.commit()
-                site = Website.query.filter_by(url=url_to_check).first()
-                db.session.refresh(site)
+                #update_website_data(url_to_check, data)
+                #db.session.commit()
+                #site = Website.query.filter_by(url=url_to_check).first()
+                #db.session.refresh(site)
                 return data
 
             except ValueError:

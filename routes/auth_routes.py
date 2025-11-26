@@ -12,7 +12,30 @@ from flask_login import (
 from database import db
 from models import User
 
+import re
+
+import secrets
+
 authentification = Blueprint("auth_routes", __name__)
+
+
+def generate_confirmation_token():
+    return secrets.token_urlsafe(32)
+
+
+def is_strong_password(pwd: str) -> bool:
+    """Retourne True si le mot de passe est sécurisé."""
+    if len(pwd) < 8:
+        return False
+    if not re.search(r"[A-Z]", pwd):  # au moins 1 majuscule
+        return False
+    if not re.search(r"[a-z]", pwd):  # au moins 1 minuscule
+        return False
+    if not re.search(r"[0-9]", pwd):  # au moins 1 chiffre
+        return False
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>_\-+=/;']", pwd):  # au moins un symbole
+        return False
+    return True
 
 
 # gère l'inscription des utilisateurs en vérifiant si l'utilisateur est déjà connecté, en traitant les soumissions de formulaires pour créer de nouveaux utilisateurs,
@@ -26,7 +49,6 @@ def signup():
         return redirect(url_for("main_routes.index"))
 
     if request.method == "POST":
-
         username = request.form.get("email")
         password = request.form.get("password")
         confirm_password = request.form.get("confirm_password")
@@ -37,6 +59,15 @@ def signup():
         # 🔐 Vérification : mots de passe identiques
         if password != confirm_password:
             flash("Les mots de passe ne correspondent pas.", "error")
+            return redirect(url_for("auth_routes.signup"))
+
+        # 🔐 Vérification mot de passe fort
+        if not is_strong_password(password):
+            flash(
+                "Le mot de passe doit contenir au minimum 8 caractères, une majuscule, "
+                "une minuscule, un chiffre et un symbole.",
+                "error"
+            )
             return redirect(url_for("auth_routes.signup"))
 
         # 🔎 Vérification : email déjà utilisé ?
@@ -54,7 +85,7 @@ def signup():
                 username=username,
                 first_name=first_name,
                 last_name=last_name,
-                email=email
+                email=email,
             )
             new_user.set_password(password)
 
@@ -64,17 +95,19 @@ def signup():
             db.session.add(new_user)
             db.session.commit()
 
-            flash("Inscription réussie ! Vous pouvez maintenant vous connecter.", "success")
+            flash(
+                "Inscription réussie ! Vous pouvez maintenant vous connecter.",
+                "success",
+            )
             return redirect(url_for("auth_routes.login"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Une erreur inattendue est survenue. Veuillez réessayer.", "error")
             return redirect(url_for("auth_routes.signup"))
 
     # GET → aucun message d’erreur n’est affiché
     return render_template("access_account/signup.html")
-
 
 
 # gère l'authentification des utilisateurs en vérifiant si un utilisateur est déjà connecté, en traitant les soumissions de formulaires pour vérifier les informations d'identification,
@@ -109,4 +142,3 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("auth_routes.login"))
-

@@ -454,7 +454,7 @@ def import_data():
             # 🚀 Envoi des tâches Celery
             # -------------------------
             from tasks import check_single_site
-
+            
             task_records = []
             for site in websites_to_check:
                 task = check_single_site.apply_async(

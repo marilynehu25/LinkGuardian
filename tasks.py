@@ -68,9 +68,6 @@ async def process_site_async(site_id):
                 site.backlinks_external = babbar_data.get("backlinksExternal")
                 site.num_outlinks_ext = babbar_data.get("numOutLinksExt")
 
-            db.session.commit()
-            db.session.refresh(site)
-
         except Exception as e:
             err = str(e).lower()
             if "limit" in err or "429" in err:
@@ -84,17 +81,19 @@ async def process_site_async(site_id):
             site.first_checked = site.first_checked or now
 
             db.session.commit()
-
         except Exception as e:
             print("❌ COMMIT ERROR :", repr(e))
             db.session.rollback()
-            raise
+            return {"success": False, "error": str(e), "site_id": site_id}
+
+        # ⬅️ IMPORTANT : RETURN FINAL
+        return {"success": True, "site_id": site.id}
 
 
 @celery.task(
     name="tasks.check_single_site",
     bind=True,
-    max_retries=5,
+    max_retries=7,
     default_retry_delay=60,
     rate_limit="8/m",
     autoretry_for=(APIRateLimitError, ClientError),
@@ -103,14 +102,14 @@ async def process_site_async(site_id):
     retry_jitter=True,
 )
 def check_single_site(self, site_id):
+    print(f"🔍 Vérification site ID: {site_id}")
+
+    site = Website.query.get(site_id)
+    if not site:
+        print(f"⏭️ Site {site_id} supprimé — tâche terminée")
+        return {"success": True, "skipped": True}
+
     try:
-        print(f"🔍 Vérification site ID: {site_id}")
-
-        site = Website.query.get(site_id)
-        if not site:
-            print(f"⏭️ Site {site_id} supprimé — tâche terminée")
-            return {"success": True, "skipped": True}
-
         result = asyncio.run(process_site_async(site_id))
         print(f"✅ Vérification OK pour {site_id}")
         return result
@@ -120,12 +119,15 @@ def check_single_site(self, site_id):
         raise self.retry(exc=exc, countdown=exc.retry_after)
 
     except Exception as exc:
-        site = Website.query.get(site_id)
-        if site and self.request.retries < self.max_retries:
-            print(f"🔄 Erreur {exc}, retry…")
-            raise self.retry(exc=exc)
-        print(f"❌ Abandon du site {site_id}")
-        return {"success": False, "error": str(exc)}
+        print(f"🔥 ERREUR NON-APIRATE POUR {site_id}: {exc}")
+
+        # Retry uniquement si on n’a pas atteint le maximum
+        if self.request.retries < self.max_retries:
+            print(f"🔄 Retry pour {site_id} ({self.request.retries+1}/5)")
+            raise self.retry(exc=exc, countdown=60)
+
+        print(f"❌ Max retries atteints pour {site_id}, échec final.")
+        return {"success": False, "error": str(exc), "site_id": site_id}
 
 
 @celery.task(

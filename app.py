@@ -1,6 +1,7 @@
 # ===============================
 # 📦 Librairies & dépendances Flask
 # ===============================
+import os
 from asyncio import Semaphore
 
 from aiohttp import ClientTimeout
@@ -8,7 +9,6 @@ from flask import Flask
 from flask_executor import Executor
 from flask_login import current_user
 from flask_migrate import Migrate
-import os
 
 # ===============================
 # ⚙️ Import interne - Base et Celery
@@ -51,7 +51,9 @@ AIOHTTP_TIMEOUT = ClientTimeout(total=30)
 # 🚀 Création de l'application Flask
 # ===============================
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dfsdfsdfdfsdfsdfsdfsdfsdfsdfsdffsd")  # ⚠️ À changer !
+app.secret_key = os.getenv(
+    "SECRET_KEY", "dfsdfsdfdfsdfsdfsdfsdfsdfsdfsdffsd"
+)  # ⚠️ À changer !
 
 db_user = os.getenv("POSTGRES_USER")
 db_pass = os.getenv("POSTGRES_PASSWORD")
@@ -71,6 +73,7 @@ db.init_app(app)
 migrate = Migrate(app, db)
 login_manager.init_app(app)  # ⚠️ Obligatoire avant Admin
 executor = Executor(app)
+
 
 # ===============================
 # 🔐 Configuration Flask-Login
@@ -152,13 +155,14 @@ def inject_global_stats():
 # ===============================
 
 from celery_app import init_celery
+
 init_celery(app)
-        
+
 if __name__ == "__main__":
     # Mode développement avec rechargement automatique
     app.run(
-        host="0.0.0.0", 
-        port=5000, 
+        host="0.0.0.0",
+        port=5000,
         debug=True,
-        use_reloader=True  # ⬅️ Active le rechargement
+        use_reloader=True,  # ⬅️ Active le rechargement
     )

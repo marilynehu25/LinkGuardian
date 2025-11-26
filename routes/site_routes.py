@@ -269,9 +269,10 @@ def check_status(site_id):
         print(f"   - Follow status: {site.link_follow_status}")
         print(f"   - Google index: {site.google_index_status}")
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         import traceback
+
         print("❌ ERREUR RÉELLE COMPLÈTE ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓")
         traceback.print_exc()
 

@@ -1,15 +1,16 @@
+import json
 from collections import defaultdict
 from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Blueprint, render_template, request, url_for, redirect
-from sqlalchemy import func
+from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-import json
+from sqlalchemy import func
 
-from models import Website, Tag , Source
+from models import Source, Tag, Website
 
 domains_routes = Blueprint("domains_routes", __name__)
+
 
 def get_filtered_domains_query():
     """Construit la requête filtrée pour la page Domains, comme Backlinks."""
@@ -23,14 +24,15 @@ def get_filtered_domains_query():
         query = query.filter(func.lower(Website.tag) == filter_tag.lower())
 
     if filter_source:
-        query = query.filter(func.lower(Website.source_plateforme) == filter_source.lower())
+        query = query.filter(
+            func.lower(Website.source_plateforme) == filter_source.lower()
+        )
 
     # ----------- Recherche textuelle (si tu veux ajouter plus tard) ----------
     q = request.args.get("q", "").strip()
     if q:
         query = query.filter(
-            (Website.url.ilike(f"%{q}%"))
-            | (Website.anchor_text.ilike(f"%{q}%"))
+            (Website.url.ilike(f"%{q}%")) | (Website.anchor_text.ilike(f"%{q}%"))
         )
 
     return query
@@ -245,18 +247,19 @@ def domain_stats():
     sources = Source.query.all()
 
     filters = {
-            "tag": request.args.get("tag", ""),
-            "source": request.args.get("source", ""),
-        }
-    
-    pagination_base_url = url_for("domains_routes.domains_table_partial", 
-    q=request.args.get("q", ""),
-    tag=request.args.get("tag", ""),
-    source=request.args.get("source", ""),
-    follow=request.args.get("follow", "all"),
-    indexed=request.args.get("indexed", "all"),
-    sort=request.args.get("sort", "created"),
-    order=request.args.get("order", "desc"),
+        "tag": request.args.get("tag", ""),
+        "source": request.args.get("source", ""),
+    }
+
+    pagination_base_url = url_for(
+        "domains_routes.domains_table_partial",
+        q=request.args.get("q", ""),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
+        follow=request.args.get("follow", "all"),
+        indexed=request.args.get("indexed", "all"),
+        sort=request.args.get("sort", "created"),
+        order=request.args.get("order", "desc"),
     )
 
     return render_template(
@@ -277,9 +280,9 @@ def domain_stats():
         current_page=page,
         total_pages=total_pages,
         filters=filters,
-        tags = tags,
-        sources = sources,
-        pagination_base_url = pagination_base_url,
+        tags=tags,
+        sources=sources,
+        pagination_base_url=pagination_base_url,
     )
 
 
@@ -386,14 +389,15 @@ def domains_table_partial():
 
     total_pages = (total_domains_count + per_page - 1) // per_page
 
-    base_url = url_for("domains_routes.domains_table_partial",
-    q=request.args.get("q", ""),
-    tag=request.args.get("tag", ""),
-    source=request.args.get("source", ""),
-    follow=request.args.get("follow", "all"),
-    indexed=request.args.get("indexed", "all"),
-    sort=request.args.get("sort", "created"),
-    order=request.args.get("order", "desc"),
+    base_url = url_for(
+        "domains_routes.domains_table_partial",
+        q=request.args.get("q", ""),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
+        follow=request.args.get("follow", "all"),
+        indexed=request.args.get("indexed", "all"),
+        sort=request.args.get("sort", "created"),
+        order=request.args.get("order", "desc"),
     )
 
     return render_template(

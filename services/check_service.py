@@ -236,6 +236,11 @@ def perform_check_status(site_id):
                 else "Non indexé"
             )
             db.session.commit()
+
+            site = Website.query.get(site.id)
+            
+            return response
+        
         except RequestException:
             site.status_code = None
             site.link_status = "Erreur de vérification"

@@ -34,8 +34,8 @@ from services.check_service import (
     perform_check_status,
 )
 from services.stats_service import save_stats_snapshot
-from services.utils_service import check_anchor_presence
-from services.utils_service import couleur_aleatoire_unique
+from services.utils_service import check_anchor_presence, couleur_aleatoire_unique
+from tasks import check_all_user_sites
 
 sites_routes = Blueprint("sites_routes", __name__)
 
@@ -244,7 +244,14 @@ def check_status(site_id):
     try:
         # Effectuer les vérifications et mises à jour
         perform_check_status(site.id)
-        fetch_url_data(site.url, async_mode=False)
+        babbar_data = fetch_url_data(site.url, async_mode=False)
+
+        if babbar_data:
+            site.page_value = babbar_data.get("pageValue")
+            site.page_trust = babbar_data.get("pageTrust")
+            site.bas = babbar_data.get("babbarAuthorityScore")
+            site.backlinks_external = babbar_data.get("backlinksExternal")
+            site.num_outlinks_ext = babbar_data.get("numOutLinksExt")
 
         # Mettre à jour la date de vérification
         site.last_checked = datetime.now()
@@ -254,7 +261,7 @@ def check_status(site_id):
         db.session.commit()
 
         # ✅ Recharger depuis la DB pour avoir les dernières valeurs
-        db.session.refresh(site)
+        site = Website.query.get(site.id)
 
         print(f"✅ Site vérifié : {site.url}")
         print(f"   - Status HTTP: {site.status_code}")
@@ -264,7 +271,9 @@ def check_status(site_id):
 
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Erreur lors de la vérification : {e}")
+        import traceback
+        print("❌ ERREUR RÉELLE COMPLÈTE ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓")
+        traceback.print_exc()
 
     save_stats_snapshot(current_user.id)
 
@@ -307,7 +316,6 @@ def check_all_sites():
 
     try:
         print("🔍 [DEBUG] Tentative d'import de check_all_user_sites...")
-        from tasks import check_all_user_sites
 
         print("✅ [DEBUG] Import réussi")
 
@@ -390,8 +398,7 @@ def import_data():
 
                     if tag_key not in existing_tags:
                         new_tag = Tag(
-                            valeur=tag_key,
-                            couleur=couleur_aleatoire_unique()
+                            valeur=tag_key, couleur=couleur_aleatoire_unique()
                         )
                         db.session.add(new_tag)
                         existing_tags[tag_key] = new_tag
@@ -450,9 +457,7 @@ def import_data():
             task_records = []
             for site in websites_to_check:
                 task = check_single_site.apply_async(
-                    args=[site.id],
-                    queue="standard",
-                    priority=3
+                    args=[site.id], queue="standard", priority=3
                 )
                 task_records.append(
                     TaskRecord(task_id=task.id, user_id=current_user.id)
@@ -462,8 +467,7 @@ def import_data():
             db.session.commit()
 
             flash(
-                "Import lancé 🚀 Les vérifications se font en arrière-plan.",
-                "success"
+                "Import lancé 🚀 Les vérifications se font en arrière-plan.", "success"
             )
 
         except Exception as e:
@@ -490,6 +494,7 @@ def import_data():
         order="desc",
         sources=sources,
     )
+
 
 def calculate_stats(user_id):
     websites = Website.query.filter_by(user_id=user_id).all()
@@ -706,9 +711,10 @@ def export_data():
     )
 
 
-#-------------------------------------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------------------------------------
 #                                                DONNÉES PARTAGÉES
-#-------------------------------------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 def get_filtered_query_for_owner(owner_id):
     """Construit une requête filtrée pour un utilisateur dont on consulte les données partagées."""
@@ -723,14 +729,15 @@ def get_filtered_query_for_owner(owner_id):
         query = query.filter(func.lower(Website.tag) == filter_tag.lower())
 
     if filter_source:
-        query = query.filter(func.lower(Website.source_plateforme) == filter_source.lower())
+        query = query.filter(
+            func.lower(Website.source_plateforme) == filter_source.lower()
+        )
 
     # -------- Recherche textuelle --------
     q = request.args.get("q", "").strip()
     if q:
         query = query.filter(
-            (Website.url.ilike(f"%{q}%")) |
-            (Website.anchor_text.ilike(f"%{q}%"))
+            (Website.url.ilike(f"%{q}%")) | (Website.anchor_text.ilike(f"%{q}%"))
         )
 
     # -------- Follow / NoFollow --------
@@ -752,9 +759,13 @@ def get_filtered_query_for_owner(owner_id):
     order = request.args.get("order", "desc")
 
     if sort == "page_value":
-        order_by = Website.page_value.desc() if order == "desc" else Website.page_value.asc()
+        order_by = (
+            Website.page_value.desc() if order == "desc" else Website.page_value.asc()
+        )
     elif sort == "page_trust":
-        order_by = Website.page_trust.desc() if order == "desc" else Website.page_trust.asc()
+        order_by = (
+            Website.page_trust.desc() if order == "desc" else Website.page_trust.asc()
+        )
     elif sort == "domain":
         order_by = Website.url.desc() if order == "desc" else Website.url.asc()
     else:
@@ -766,7 +777,6 @@ def get_filtered_query_for_owner(owner_id):
 @sites_routes.route("/shared_data", methods=["GET"])
 @login_required
 def shared_data():
-
     shared_with_me = (
         UserAccess.query.options(joinedload(UserAccess.owner))
         .filter_by(grantee_id=current_user.id)
@@ -790,7 +800,7 @@ def shared_data():
         "order": request.args.get("order", "desc"),
     }
 
-    pagination_base_url = None   # ✅ important : valeur par défaut
+    pagination_base_url = None  # ✅ important : valeur par défaut
 
     if selected_owner_id:
         selected_owner = User.query.get_or_404(selected_owner_id)
@@ -815,11 +825,19 @@ def shared_data():
         total = stats_query.count()
 
         if total:
-            follow_count = stats_query.filter(Website.link_follow_status == "follow").count()
-            indexed_count = stats_query.filter(Website.google_index_status == "Indexé !").count()
+            follow_count = stats_query.filter(
+                Website.link_follow_status == "follow"
+            ).count()
+            indexed_count = stats_query.filter(
+                Website.google_index_status == "Indexé !"
+            ).count()
 
-            avg_value = stats_query.with_entities(func.avg(Website.page_value)).scalar() or 0
-            avg_trust = stats_query.with_entities(func.avg(Website.page_trust)).scalar() or 0
+            avg_value = (
+                stats_query.with_entities(func.avg(Website.page_value)).scalar() or 0
+            )
+            avg_trust = (
+                stats_query.with_entities(func.avg(Website.page_trust)).scalar() or 0
+            )
 
             avg_quality = round((float(avg_trust) * 0.6) + (float(avg_value) * 0.4), 1)
         else:
@@ -862,7 +880,6 @@ def shared_data():
         sources=Source.query.all(),
         pagination_base_url=pagination_base_url,
     )
-
 
 
 @sites_routes.route("/shared_data/table", methods=["GET"])

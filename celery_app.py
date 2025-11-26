@@ -36,11 +36,11 @@ celery.conf.update(
     task_ignore_result=False,
     
     # ✅ Retry configuration
-    task_autoretry_for=(Exception,),
-    task_retry_backoff=True,
-    task_retry_backoff_max=3600,
-    task_max_retries=3,
-    task_retry_jitter=True,
+    task_autoretry_for=(),
+    task_retry_backoff=False,
+    task_retry_backoff_max=0,
+    task_retry_jitter=False,
+    task_max_retries=0,
     
     # ✅ Rate limits plus souples pour parallélisme
     task_default_rate_limit="100/m",  # ⬆️ 100 tâches/minute au lieu de 10

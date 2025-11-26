@@ -5,9 +5,9 @@ from aiohttp import ClientError, ClientSession
 
 # Importer Celery depuis le fichier dédié
 from celery_app import celery
-from models import User, Website,TaskRecord
-from services.api_babbar import fetch_url_data
 from database import db
+from models import TaskRecord, User, Website
+from services.api_babbar import fetch_url_data
 
 # 🔧 CONFIGURATION DES LIMITES D'API
 API_RATE_LIMITS = {
@@ -29,85 +29,65 @@ class APIRateLimitError(Exception):
 
 
 async def process_site_async(site_id):
+
     from services.api_serpapi import check_google_indexation
     from services.check_service import check_link_presence_and_follow_status_async
 
     site = Website.query.get(site_id)
-    if not site:
-        return {"success": False, "site_id": site_id, "error": "Site non trouvé"}
 
     async with ClientSession() as session:
+
+        # 1) HTML + ancre
         try:
-            # 1) Vérifications HTML
-            link_data = await check_link_presence_and_follow_status_async(
-                session, site.url, site.link_to_check, site.anchor_text
-            )
-
-            index_status = await check_google_indexation(session, site.url)
-
-            link_present, anchor_present, follow_status, status_code = link_data
-
-            # Enregistrer l'ancien état
-            old_site = Website(
-                url=site.url,
-                link_to_check=site.link_to_check,
-                anchor_text=site.anchor_text,
-                link_status=site.link_status,
-                link_follow_status=site.link_follow_status,
-                anchor_status=site.anchor_status,
-                google_index_status=site.google_index_status,
-                source_plateforme=site.source_plateforme,
-                last_checked=site.last_checked,
-                user_id=site.user_id,
-                page_value=site.page_value,
-                page_trust=site.page_trust,
-                bas=site.bas,
-                backlinks_external=site.backlinks_external,
-                num_outlinks_ext=site.num_outlinks_ext,
-                status_code=site.status_code,
-                tag=site.tag,
-            )
-
-            # 2) Mise à jour partielle
+            link_present, anchor_present, follow_status, status_code = \
+                await check_link_presence_and_follow_status_async(
+                    session, site.url, site.link_to_check, site.anchor_text
+                )
             site.status_code = status_code
             site.link_status = "Lien présent" if link_present else "URL non présente"
             site.link_follow_status = follow_status if link_present else None
-            site.anchor_status = (
-                "Ancre présente" if anchor_present else "Ancre manquante"
-            )
+            site.anchor_status = "Ancre présente" if anchor_present else "Ancre manquante"
+        except Exception as e:
+            print("❌ HTML ERROR :", repr(e))
+
+        # 2) Google indexing
+        try:
+            index_status = await check_google_indexation(session, site.url)
             site.google_index_status = index_status
+        except Exception as e:
+            print("❌ GOOGLE ERROR :", repr(e))
 
-            # 3) Récupération Babbar AVANT commit
-            try:
-                fetch_url_data(site.url, async_mode=False)
-            except Exception as e:
-                err = str(e).lower()
-                if "limit" in err or "429" in err:
-                    raise APIRateLimitError("babbar", retry_after=60)
-                else:
-                    print(f"⚠️ Erreur Babbar non critique : {e}")
+        # 3) Babbar
+        try:
+            babbar_data = fetch_url_data(site.url, async_mode=False)
 
-            # 4) last_checked — maintenant OK
-            site.last_checked = datetime.now()
-            if not site.first_checked:
-                site.first_checked = datetime.now()
+            if babbar_data:
+                site.page_value = babbar_data.get("pageValue")
+                site.page_trust = babbar_data.get("pageTrust")
+                site.bas = babbar_data.get("babbarAuthorityScore")
+                site.backlinks_external = babbar_data.get("backlinksExternal")
+                site.num_outlinks_ext = babbar_data.get("numOutLinksExt")
 
-            # 5) Commit FINAL UNIQUE
             db.session.commit()
-
-            # Ajouter l'historique
-            db.session.add(old_site)
-            db.session.commit()
-
-            return {"success": True, "site_id": site.id}
-
-        except APIRateLimitError:
-            db.session.rollback()
-            raise
+            db.session.refresh(site)
 
         except Exception as e:
+            err = str(e).lower()
+            if "limit" in err or "429" in err:
+                raise APIRateLimitError("babbar", retry_after=60)
+            print("❌ BABBAR ERROR :", repr(e))
+
+        # 4) Commit final
+        try:
+            now = datetime.now()
+            site.last_checked = now
+            site.first_checked = site.first_checked or now
+
+            db.session.commit()
+
+        except Exception as e:
+            print("❌ COMMIT ERROR :", repr(e))
             db.session.rollback()
-            print(f"❌ Erreur pour {site.url}: {e}")
             raise
 
 
@@ -116,7 +96,7 @@ async def process_site_async(site_id):
     bind=True,
     max_retries=5,
     default_retry_delay=60,
-    rate_limit="15/m",
+    rate_limit="8/m",
     autoretry_for=(APIRateLimitError, ClientError),
     retry_backoff=True,
     retry_backoff_max=600,
@@ -152,7 +132,7 @@ def check_single_site(self, site_id):
     name="tasks.check_all_user_sites",
     rate_limit="10/m",  # ⬆️ Augmenté de 2/m à 10/m
 )
-def check_all_user_sites(user_id, urgent=False):
+def check_all_user_sites(user_id):
     """Vérifie tous les sites d'un utilisateur
 
     🚀 OPTIMISATION: Les tâches sont lancées sans countdown.
@@ -192,10 +172,10 @@ def check_all_user_sites(user_id, urgent=False):
         # Le système de queues et les multiples workers géreront la distribution
         task = check_single_site.apply_async(
             args=[site.id],
-            kwargs={"urgent": urgent},
-            queue="urgent" if urgent else "standard",  # Routing vers bonne queue
-            priority=9 if urgent else 5,  # Priorité explicite
+            queue="standard",
+            priority=5,
         )
+
         task_ids.append(task.id)
 
         db.session.add(TaskRecord(task_id=task.id, user_id=user_id))
@@ -207,12 +187,13 @@ def check_all_user_sites(user_id, urgent=False):
     db.session.commit()
 
     print(f"✅ {len(task_ids)} tâches lancées ({skipped} sites ignorés).")
-    print(f"🔥 Mode: {'URGENT (priorité haute)' if urgent else 'STANDARD'}")
+    print(f"🔥 Mode: {'STANDARD'}")
 
     # Snapshot des stats
     from services.stats_service import save_stats_snapshot
 
     save_stats_snapshot(user_id)
+    
 
     return {
         "user_id": user_id,
@@ -220,7 +201,7 @@ def check_all_user_sites(user_id, urgent=False):
         "planned_tasks": len(task_ids),
         "skipped_sites": skipped,
         "task_ids": task_ids,
-        "mode": "urgent" if urgent else "standard",
+        "mode": "standard",
     }
 
 

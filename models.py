@@ -11,9 +11,16 @@ from database import db
 
 
 class Website(db.Model):
-    __table_args__ = (
-        UniqueConstraint("url", "link_to_check", "user_id", name="uix_url_linktocheck"),
-    )
+#    __table_args__ = (
+#        UniqueConstraint(
+#            "user_id",
+#            "url",
+#            "link_to_check",
+#            "anchor_text",
+#            "source_plateforme",
+#            name="uix_url_linktocheck",
+#        ),
+#    )
 
     id = db.Column(db.Integer, primary_key=True)
     url = db.Column(db.String(250), nullable=False)
@@ -30,9 +37,7 @@ class Website(db.Model):
 
     # ✅ CORRECT : ForeignKey pointe vers user.id
     user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id", ondelete="CASCADE"),
-        nullable=False
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False
     )
 
     page_value = db.Column(db.Integer)
@@ -81,6 +86,7 @@ class WebsiteStats(db.Model):
     def __repr__(self):
         return f"<WebsiteStats {self.user_id} {self.date.strftime('%Y-%m-%d')}>"
 
+
 class TaskRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.String(200), nullable=False)
@@ -97,7 +103,9 @@ class User(UserMixin, db.Model):
 
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(50), default="user")
-    profile_picture = db.Column(db.String(255), nullable=True, default="default_avatar.png")
+    profile_picture = db.Column(
+        db.String(255), nullable=True, default="default_avatar.png"
+    )
 
     # Relations explicites
     shares_as_owner = db.relationship(
@@ -105,7 +113,7 @@ class User(UserMixin, db.Model):
         foreign_keys="[UserAccess.owner_id]",
         cascade="all, delete-orphan",
         back_populates="owner",
-        overlaps="shared_with"
+        overlaps="shared_with",
     )
 
     shares_as_grantee = db.relationship(
@@ -113,7 +121,7 @@ class User(UserMixin, db.Model):
         foreign_keys="[UserAccess.grantee_id]",
         cascade="all, delete-orphan",
         back_populates="grantee",
-        overlaps="access_to"
+        overlaps="access_to",
     )
 
     def set_password(self, password):
@@ -129,9 +137,15 @@ class User(UserMixin, db.Model):
 class UserAccess(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
-    owner_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
-    grantee_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
-    granted_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    owner_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    grantee_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    granted_by = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
 
     created_at = db.Column(db.DateTime, default=datetime.now)
 
@@ -140,14 +154,14 @@ class UserAccess(db.Model):
         "User",
         foreign_keys=[owner_id],
         back_populates="shares_as_owner",
-        overlaps="shared_with"
+        overlaps="shared_with",
     )
 
     grantee = db.relationship(
         "User",
         foreign_keys=[grantee_id],
         back_populates="shares_as_grantee",
-        overlaps="access_to"
+        overlaps="access_to",
     )
 
     admin = db.relationship("User", foreign_keys=[granted_by])
@@ -158,7 +172,6 @@ class UserAccess(db.Model):
 
     def __repr__(self):
         return f"<UserAccess owner={self.owner_id} → grantee={self.grantee_id}>"
-
 
 
 # Nouvelle classe pour les tags
@@ -215,5 +228,3 @@ class Configuration(db.Model):
     serpapi_key = db.Column(db.String(255), nullable=True)
     last_babbar_sync = db.Column(db.DateTime, nullable=True)
     last_serpapi_sync = db.Column(db.DateTime, nullable=True)
-
-

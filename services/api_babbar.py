@@ -72,11 +72,13 @@ def fetch_url_data(url_to_check, async_mode=True):
             try:
                 data = response.json()
                 print(f"Données reçues de l'API pour {url_to_check}: {data}")
-                
+
                 update_website_data(url_to_check, data)
                 db.session.commit()
                 site = Website.query.filter_by(url=url_to_check).first()
                 db.session.refresh(site)
+                return data
+
             except ValueError:
                 print(f"La réponse ne contient pas de JSON valide: {response.text}")
         else:
@@ -123,3 +125,17 @@ async def fetch_url_data_async(urls_to_check):
                             f"Échec de la récupération des données pour {payload['url']} : {response.status}"
                         )
             await asyncio.sleep(150)  # Attendre 1 minute entre les lots
+
+
+# 3) Récupération Babbar AVANT commit
+"""try:
+    babbar_data = fetch_url_data(site.url, async_mode=False)
+    print(f"🔥 Données Babbar reçues pour {site.url}: {babbar_data}")
+
+    # 📌 Mettre à jour le site avec les données Babbar
+    if babbar_data:
+        site.page_value = babbar_data.get("pageValue")
+        site.page_trust = babbar_data.get("pageTrust")
+        site.bas = babbar_data.get("babbarAuthorityScore")
+        site.backlinks_external = babbar_data.get("backlinksExternal")
+        site.num_outlinks_ext = babbar_data.get("numOutLinksExt")"""

@@ -34,7 +34,11 @@ from services.check_service import (
     perform_check_status,
 )
 from services.stats_service import save_stats_snapshot
-from services.utils_service import check_anchor_presence, couleur_aleatoire_unique
+from services.utils_service import (
+    check_anchor_presence,
+    couleur_aleatoire_unique,
+    remove_accents,
+)
 from tasks import check_all_user_sites
 
 sites_routes = Blueprint("sites_routes", __name__)
@@ -52,27 +56,27 @@ def extract_domain(url):
 @sites_routes.route("/add_site", methods=["POST"])
 def add_site():
     url = request.form.get("url", "").strip()
-    tag = request.form.get("tag", "").strip().lower()
+    tag = remove_accents(request.form.get("tag", "").strip().lower())
     link_to_check = request.form.get("link_to_check", "").strip()
     anchor_text = request.form.get("anchor_text", "").strip()
-    source_plateforme = request.form.get("source_plateforme", "").strip()
+    source_plateforme = remove_accents(
+        request.form.get("source_plateforme", "").strip().lower()
+    )
 
-    # ✅ VALIDATION AMÉLIORÉE - Vérifier TOUS les champs obligatoires
+    # ✅ VALIDATION AMÉLIORÉE - Vérifier champs obligatoires
     if not url or not tag or not link_to_check:
         flash(
             "⚠️ Veuillez remplir tous les champs obligatoires (URL, Tag, Lien à vérifier).",
             "warning",
         )
 
-        # Si appel HTMX → ne rien faire (pas de rendu de tableau)
         if request.headers.get("HX-Request"):
-            # Retourner un message d'erreur au lieu du tableau
             return (
                 """
                 <div class="bg-yellow-500/10 border border-yellow-500 text-yellow-500 px-4 py-3 rounded-lg mb-4">
                     ⚠️ Veuillez remplir tous les champs obligatoires
                 </div>
-            """,
+                """,
                 400,
             )
 
@@ -81,29 +85,59 @@ def add_site():
     # ✅ VALIDATION DES URLs
     if not url.startswith(("http://", "https://")):
         flash("⚠️ L'URL doit commencer par http:// ou https://", "warning")
+
         if request.headers.get("HX-Request"):
             return (
                 """
                 <div class="bg-yellow-500/10 border border-yellow-500 text-yellow-500 px-4 py-3 rounded-lg mb-4">
                     ⚠️ L'URL doit commencer par http:// ou https://
                 </div>
-            """,
+                """,
                 400,
             )
+
         return redirect(request.referrer or url_for("main_routes.index"))
 
     if not link_to_check.startswith(("http://", "https://")):
         flash("⚠️ Le lien à vérifier doit commencer par http:// ou https://", "warning")
+
         if request.headers.get("HX-Request"):
             return (
                 """
                 <div class="bg-yellow-500/10 border border-yellow-500 text-yellow-500 px-4 py-3 rounded-lg mb-4">
                     ⚠️ Le lien à vérifier doit commencer par http:// ou https://
                 </div>
-            """,
+                """,
                 400,
             )
+
         return redirect(request.referrer or url_for("main_routes.index"))
+
+    # 🚫⛔▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+    # 🚫 Vérification : ce site existe déjà ?
+    # ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+    existing = Website.query.filter_by(
+        user_id=current_user.id,
+        url=url,
+        link_to_check=link_to_check,
+        anchor_text=anchor_text,
+    ).first()
+
+    if existing:
+        flash("⚠️ Ce site existe déjà dans votre base.", "warning")
+
+        if request.headers.get("HX-Request"):
+            return (
+                """
+                <div class="bg-yellow-500/10 border border-yellow-500 text-yellow-500 px-4 py-3 rounded-lg mb-4">
+                    ⚠️ Ce site existe déjà dans votre base.
+                </div>
+                """,
+                400,
+            )
+
+        return redirect(request.referrer or url_for("main_routes.index"))
+    # 🚫⛔▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 
     try:
         response = requests.get(url, timeout=10)
@@ -122,7 +156,7 @@ def add_site():
             link_to_check=link_to_check,
             anchor_text=anchor_text,
             source_plateforme=source_plateforme,
-            user_id=current_user.id,  # ✅ CORRECTION : utiliser current_user.id au lieu de current_user.email
+            user_id=current_user.id,
             link_status="Lien présent" if link_present else "Lien absent",
             anchor_status="Ancre présente" if anchor_present else "Ancre absente",
             link_follow_status=follow_status if link_present else None,
@@ -133,18 +167,24 @@ def add_site():
         db.session.add(new_site)
         db.session.commit()
 
-        # ✅ Ces deux lignes mettent à jour la ligne dans la base
+        # Vérification avancée + Babbar
         perform_check_status(new_site.id)
-        fetch_url_data(new_site.url, async_mode=False)
+        babbar_data = fetch_url_data(new_site.url, async_mode=False)
 
-        # ✅ On recharge depuis la DB pour avoir les dernières valeurs
+        if babbar_data:
+            new_site.page_value = babbar_data.get("pageValue")
+            new_site.page_trust = babbar_data.get("pageTrust")
+            new_site.bas = babbar_data.get("babbarAuthorityScore")
+            new_site.backlinks_external = babbar_data.get("backlinksExternal")
+            new_site.num_outlinks_ext = babbar_data.get("numOutLinksExt")
+
+        db.session.commit()
         db.session.refresh(new_site)
 
         flash("✅ Site ajouté et vérifié avec succès !", "success")
 
-        # Si appel HTMX → renvoie le tableau actualisé
+        # HTMX → renvoie uniquement le tableau mis à jour
         if request.headers.get("HX-Request"):
-            # ✅ Récupérer la requête filtrée avec pagination
             query = Website.query.filter_by(user_id=current_user.id).order_by(
                 Website.id.desc()
             )
@@ -162,31 +202,32 @@ def add_site():
 
     except requests.Timeout:
         flash("⏱️ Timeout : Le site met trop de temps à répondre", "danger")
+
         if request.headers.get("HX-Request"):
             return (
                 """
                 <div class="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg mb-4">
                     ⏱️ Le site met trop de temps à répondre
                 </div>
-            """,
+                """,
                 500,
             )
 
     except requests.RequestException as e:
         flash(f"❌ Erreur lors de la vérification de l'URL : {e}", "danger")
+
         if request.headers.get("HX-Request"):
             return (
                 f"""
                 <div class="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg mb-4">
                     ❌ Erreur : {str(e)}
                 </div>
-            """,
+                """,
                 500,
             )
 
     db.session.refresh(new_site)
     save_stats_snapshot(current_user.id)
-    flash("✅ Site ajouté et vérifié avec succès !", "success")
 
     return redirect(request.referrer or url_for("main_routes.index"))
 
@@ -358,12 +399,14 @@ def import_data():
             df.columns = [col.lower().strip() for col in df.columns]
 
             # 🔥 Déduplication immédiate
-            df = df.drop_duplicates(subset=["url", "link_to_check"], keep="last")
+            df = df.drop_duplicates(
+                subset=["url", "link_to_check", "anchor_text"], keep="last"
+            )
 
             # 🔥 Prétraitement
             df["url"] = df["url"].astype(str).str.strip()
-            df["tag"] = df["tag"].astype(str).str.lower().str.strip()
-            df["plateforme"] = df["plateforme"].astype(str).str.lower().str.strip()
+            df["tag"] = df["tag"].astype(str).str.lower().str.strip().apply(lambda x : remove_accents(x))
+            df["plateforme"] = df["plateforme"].astype(str).str.lower().str.strip().apply(lambda x : remove_accents(x))
             df["link_to_check"] = df["link_to_check"].astype(str).str.strip()
             df["anchor_text"] = df["anchor_text"].astype(str).str.strip()
 
@@ -373,7 +416,9 @@ def import_data():
 
             # 🔥 Précharger les sites existants de l’utilisateur
             existing_sites = Website.query.filter_by(user_id=current_user.id).all()
-            lookup = {(s.url, s.link_to_check): s for s in existing_sites}
+            lookup = {
+                (s.url, s.link_to_check, s.anchor_text): s for s in existing_sites
+            }
 
             new_sites = []
             updated_sites = []
@@ -385,7 +430,7 @@ def import_data():
                 if not url:
                     continue
 
-                key = (url, row["link_to_check"])
+                key = (url, row["link_to_check"], row["anchor_text"])
                 domain = extract_domain(url)
 
                 tag_value = row["tag"] if row["tag"] else None
@@ -395,7 +440,7 @@ def import_data():
                 # 🏷️ GESTION AUTO DES TAGS
                 # -------------------------
                 if tag_value:
-                    tag_key = tag_value.lower()
+                    tag_key = remove_accents(tag_value.strip().lower())
 
                     if tag_key not in existing_tags:
                         new_tag = Tag(
@@ -408,7 +453,7 @@ def import_data():
                 # 🏭 GESTION AUTO DES SOURCES
                 # ----------------------------------
                 if source_value:
-                    source_key = source_value.lower()
+                    source_key = remove_accents(source_value.strip().lower())
 
                     if source_key not in existing_sources:
                         new_source = Source(nom=source_key)
@@ -454,7 +499,7 @@ def import_data():
             # 🚀 Envoi des tâches Celery
             # -------------------------
             from tasks import check_single_site
-            
+
             task_records = []
             for site in websites_to_check:
                 task = check_single_site.apply_async(

@@ -50,6 +50,15 @@ def domain_stats():
     query = get_filtered_domains_query()
     websites = query.all()
 
+    tags = Tag.query.all()
+    sources = Source.query.all()
+
+    filters = {
+    "q": request.args.get("q", ""),
+    "tag": request.args.get("tag", ""),
+    "source": request.args.get("source", "")
+    }
+
     if not websites:
         return render_template(
             "domains/list.html",
@@ -68,6 +77,9 @@ def domain_stats():
             top_domains_chart_json="{}",
             current_page=1,
             total_pages=0,
+            tags = tags, 
+            sources = sources,
+            filters = filters,
         )
 
     domain_data = defaultdict(
@@ -247,8 +259,9 @@ def domain_stats():
     sources = Source.query.all()
 
     filters = {
+        "q": request.args.get("q", ""),
         "tag": request.args.get("tag", ""),
-        "source": request.args.get("source", ""),
+        "source": request.args.get("source", "")
     }
 
     pagination_base_url = url_for(

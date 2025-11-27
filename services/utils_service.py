@@ -9,6 +9,13 @@ from sqlalchemy import literal
 # à partir du fichier python database.py
 from models import Tag, db
 
+import unicodedata
+
+def remove_accents(text):
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 # la fonction check_link_presence détermine la présence d'un lien spécifié dans le contenu HTML d'une page web
 def check_link_presence(html_content, link_to_check):

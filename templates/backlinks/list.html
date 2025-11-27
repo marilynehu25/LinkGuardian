@@ -93,15 +93,13 @@
 
     </div>
 
-  <form
-      hx-get="/backlinks/partial/table"
-      hx-target="#backlinks-table"
-      hx-swap="innerHTML"
-      hx-include="this"
-      class="grid grid-cols-1 md:grid-cols-6 gap-4 bg-gray-900 p-4 rounded-xl"
-      hx-trigger="change"
-  >
-
+    <form
+        hx-boost="true"
+        hx-trigger="change"
+        method="GET"
+        action="/backlinks"
+        class="grid grid-cols-1 md:grid-cols-6 gap-4 bg-gray-900 p-4 rounded-xl"
+    >
       <!-- Recherche -->
       <div class="md:col-span-1">
           <label class="text-gray-400 text-sm mb-1">Recherche</label>

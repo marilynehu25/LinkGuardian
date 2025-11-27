@@ -4,92 +4,69 @@ from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
-from models import Source, Tag, User, Website
+from models import Source, Tag, Website
 
 backlinks_routes = Blueprint("backlinks_routes", __name__)
 
 
 def get_filtered_query():
-    """Construit la requête filtrée backlinks/dashboard"""
+    """Construit la requête avec les filtres communs"""
+    query = Website.query.filter_by(user_id=current_user.id)
 
-    # Récupération brute des filtres
-    filter_user_ids = request.args.getlist("user_id")  # toujours strings
-    filter_tags = request.args.getlist("tag")
-    filter_sources = request.args.getlist("source")
+    # -------- Filtres TAG & SOURCE --------
+    filter_tag = request.args.get("tag", "").strip()
+    filter_source = request.args.get("source", "").strip()
 
-    # --------------------------------------------
-    # 🔹 1. Sélection des utilisateurs
-    # --------------------------------------------
-    if current_user.role == "main_admin":
-        # Filtrage uniquement sur les valeurs numériques
-        valid_user_ids = [int(uid) for uid in filter_user_ids if uid.isdigit()]
+    if filter_tag:
+        query = query.filter(func.lower(Website.tag) == filter_tag.lower())
 
-        if valid_user_ids:
-            # → cas 1 : un ou plusieurs utilisateurs sélectionnés
-            query = Website.query.filter(Website.user_id.in_(valid_user_ids))
-        else:
-            # → cas 2 : rien sélectionné → MES données uniquement
-            query = Website.query.filter(Website.user_id == current_user.id)
-
-    else:
-        # → utilisateur simple
-        query = Website.query.filter(Website.user_id == current_user.id)
-
-    # --------------------------------------------
-    # 🔹 2. Filtres TAGS
-    # --------------------------------------------
-    if filter_tags:
-        normalized = [t.lower().strip() for t in filter_tags]
-        query = query.filter(func.lower(Website.tag).in_(normalized))
-
-    # --------------------------------------------
-    # 🔹 3. Filtres SOURCES
-    # --------------------------------------------
-    if filter_sources:
-        normalized = [s.lower().strip() for s in filter_sources]
-        query = query.filter(func.lower(Website.source_plateforme).in_(normalized))
-
-    # --------------------------------------------
-    # 🔹 4. Search textuelle
-    # --------------------------------------------
-    q = request.args.get("q", "").strip()
-    if q:
+    if filter_source:
         query = query.filter(
-            Website.url.ilike(f"%{q}%") | Website.anchor_text.ilike(f"%{q}%")
+            func.lower(Website.source_plateforme) == filter_source.lower()
         )
 
-    # --------------------------------------------
-    # 🔹 5. Follow / Nofollow
-    # --------------------------------------------
+    # -------- Filtres Déjà existants --------
+    q = request.args.get("q", "").strip()
     follow = request.args.get("follow", "all")
+    indexed = request.args.get("indexed", "all")
+    sort = request.args.get("sort", "created")
+    order = request.args.get("order", "desc")
+
+    # Recherche textuelle
+    if q:
+        query = query.filter(
+            (Website.url.ilike(f"%{q}%")) | (Website.anchor_text.ilike(f"%{q}%"))
+        )
+
+    # Filtre follow/nofollow
     if follow == "true":
         query = query.filter(Website.link_follow_status == "follow")
     elif follow == "false":
         query = query.filter(Website.link_follow_status == "nofollow")
 
-    # --------------------------------------------
-    # 🔹 6. Indexation
-    # --------------------------------------------
-    indexed = request.args.get("indexed", "all")
+    # Filtre indexé
     if indexed == "true":
         query = query.filter(Website.google_index_status == "Indexé !")
     elif indexed == "false":
         query = query.filter(Website.google_index_status != "Indexé !")
 
-    # --------------------------------------------
-    # 🔹 7. Tri
-    # --------------------------------------------
-    sort = request.args.get("sort", "created")
-    order = request.args.get("order", "desc")
-
-    columns = {
-        "page_value": Website.page_value,
-        "page_trust": Website.page_trust,
-        "domain": Website.url,
-        "created": Website.id,
-    }
-    col = columns.get(sort, Website.id)
-    query = query.order_by(col.desc() if order == "desc" else col.asc())
+    # Tri
+    if sort == "page_value":
+        query = query.order_by(
+            Website.page_value.desc() if order == "desc" else Website.page_value.asc()
+        )
+    elif sort == "page_trust":
+        query = query.order_by(
+            Website.page_trust.desc() if order == "desc" else Website.page_trust.asc()
+        )
+    elif sort == "domain":
+        query = query.order_by(
+            Website.url.desc() if order == "desc" else Website.url.asc()
+        )
+    else:  # created (par défaut)
+        query = query.order_by(
+            Website.id.desc() if order == "desc" else Website.id.asc()
+        )
 
     return query
 
@@ -99,30 +76,22 @@ def get_filtered_query():
 def backlinks_list():
     """Route principale - page complète"""
 
-    # ---------------------------------------
-    # 🔹 1) Récupération query filtrée
-    # ---------------------------------------
+    # Requête filtrée
     query = get_filtered_query()
 
-    # ---------------------------------------
-    # 🔹 2) Pagination
-    # ---------------------------------------
+    # Pagination
     page = request.args.get("page", 1, type=int)
     per_page = 10
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    # ---------------------------------------
-    # 🔹 3) Calcul qualité
-    # ---------------------------------------
+    # ✅ Calcul de la qualité pour chaque site
     for site in pagination.items:
         if site.page_trust and site.page_value:
             site.quality = round((site.page_trust * 0.6) + (site.page_value * 0.4), 1)
         else:
             site.quality = 0
 
-    # ---------------------------------------
-    # 🔹 4) Statistiques filtrées
-    # ---------------------------------------
+    # Statistiques FILTRÉES si tag/source/search/follow/indexed actifs
     stats_query = get_filtered_query().order_by(None)
     total = stats_query.count()
 
@@ -154,42 +123,30 @@ def backlinks_list():
         "avg_trust": f"{avg_trust:.1f}",
     }
 
-    # ---------------------------------------
-    # 🔹 6) Filtres envoyés au template
-    # ---------------------------------------
+    tags = Tag.query.all()
+    sources = Source.query.all()
+
     filters = {
         "q": request.args.get("q", ""),
         "follow": request.args.get("follow", "all"),
         "indexed": request.args.get("indexed", "all"),
         "sort": request.args.get("sort", "created"),
         "order": request.args.get("order", "desc"),
-        # multi-tags
-        "tag": request.args.getlist("tag"),
-        # multi-source
-        "source": request.args.getlist("source"),
-        # multi-users
-        "user_id": request.args.getlist("user_id"),
+        "tag": request.args.get("tag", ""),
+        "source": request.args.get("source", ""),
     }
 
-    # ---------------------------------------
-    # 🔹 7) URL pagination (garde tous les filtres)
-    # ---------------------------------------
     pagination_base_url = url_for(
         "backlinks_routes.backlinks_table_partial",
         q=request.args.get("q", ""),
-        # multi-valued filters
-        tag=request.args.getlist("tag"),
-        source=request.args.getlist("source"),
-        user_id=request.args.getlist("user_id"),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
         follow=request.args.get("follow", "all"),
         indexed=request.args.get("indexed", "all"),
         sort=request.args.get("sort", "created"),
         order=request.args.get("order", "desc"),
     )
 
-    # ---------------------------------------
-    # 🔹 8) Render template final
-    # ---------------------------------------
     return render_template(
         "backlinks/list.html",
         backlinks=pagination.items,
@@ -197,9 +154,8 @@ def backlinks_list():
         total_pages=pagination.pages or 1,
         stats=stats,
         filters=filters,
-        tags=Tag.query.all(),
-        sources=Source.query.all(),
-        users=User.query.all(),
+        tags=tags,
+        sources=sources,
         pagination_base_url=pagination_base_url,
     )
 
@@ -209,56 +165,38 @@ def backlinks_list():
 def backlinks_table_partial():
     """Partial HTMX - seulement le tableau"""
 
-    # ---------------------------------------
-    # 🔹 Redirection si pas HTMX
-    # ---------------------------------------
+    # ⚡ Si ce n’est pas un appel HTMX, on redirige vers la page complète
     if not request.headers.get("HX-Request"):
+        # récupère le n° de page pour rediriger proprement
         page = request.args.get("page", 1, type=int)
         return redirect(url_for("backlinks_routes.backlinks_list", page=page))
 
-    # ---------------------------------------
-    # 🔹 Query filtrée (tout est dans get_filtered_query)
-    # ---------------------------------------
+    # Requête filtrée
     query = get_filtered_query()
 
-    # ---------------------------------------
-    # 🔹 Pagination
-    # ---------------------------------------
+    # Pagination
     page = request.args.get("page", 1, type=int)
     per_page = 10
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    # ---------------------------------------
-    # 🔹 Calcul qualité
-    # ---------------------------------------
+    # Calcul de la qualité
     for site in pagination.items:
         if site.page_trust and site.page_value:
             site.quality = round((site.page_trust * 0.6) + (site.page_value * 0.4), 1)
         else:
             site.quality = 0
 
-    # ---------------------------------------
-    # 🔹 Reconstruction de l'URL de pagination
-    #     → conserve TOUS les filtres multi-values
-    # ---------------------------------------
     base_url = url_for(
         "backlinks_routes.backlinks_table_partial",
         q=request.args.get("q", ""),
-        # MULTI-TAGS
-        tag=request.args.getlist("tag"),
-        # MULTI-SOURCES
-        source=request.args.getlist("source"),
-        # MULTI-USERS
-        user_id=request.args.getlist("user_id"),
+        tag=request.args.get("tag", ""),
+        source=request.args.get("source", ""),
         follow=request.args.get("follow", "all"),
         indexed=request.args.get("indexed", "all"),
         sort=request.args.get("sort", "created"),
         order=request.args.get("order", "desc"),
     )
 
-    # ---------------------------------------
-    # 🔹 Render partial HTMX
-    # ---------------------------------------
     return render_template(
         "backlinks/_table.html",
         backlinks=pagination.items,

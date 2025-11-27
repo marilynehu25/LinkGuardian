@@ -13,22 +13,22 @@ domains_routes = Blueprint("domains_routes", __name__)
 
 
 def get_filtered_domains_query():
-    """Construit la requête filtrée pour la page Domains, comme Backlinks."""
     query = Website.query.filter_by(user_id=current_user.id)
 
-    # ----------- Filtres TAG & SOURCE ----------
-    filter_tag = request.args.get("tag", "").strip()
-    filter_source = request.args.get("source", "").strip()
+    filter_tag = request.args.get("tag")
+    filter_source = request.args.get("source")
 
-    if filter_tag:
+    # TAG
+    if filter_tag is not None and filter_tag != "":
         query = query.filter(func.lower(Website.tag) == filter_tag.lower())
 
-    if filter_source:
+    # SOURCE
+    if filter_source is not None and filter_source != "":
         query = query.filter(
             func.lower(Website.source_plateforme) == filter_source.lower()
         )
 
-    # ----------- Recherche textuelle (si tu veux ajouter plus tard) ----------
+    # Recherche textuelle
     q = request.args.get("q", "").strip()
     if q:
         query = query.filter(
@@ -50,16 +50,20 @@ def domain_stats():
     query = get_filtered_domains_query()
     websites = query.all()
 
-    tags = Tag.query.all()
-    sources = Source.query.all()
-
-    filters = {
-    "q": request.args.get("q", ""),
-    "tag": request.args.get("tag", ""),
-    "source": request.args.get("source", "")
-    }
-
     if not websites:
+        tags = Tag.query.all()
+        sources = Source.query.all()
+
+        filters = {
+            "q": request.args.get("q", ""),
+            "follow": request.args.get("follow", "all"),
+            "indexed": request.args.get("indexed", "all"),
+            "sort": request.args.get("sort", "created"),
+            "order": request.args.get("order", "desc"),
+            "tag": request.args.get("tag", ""),
+            "source": request.args.get("source", ""),
+        }
+
         return render_template(
             "domains/list.html",
             domains=[],
@@ -77,9 +81,9 @@ def domain_stats():
             top_domains_chart_json="{}",
             current_page=1,
             total_pages=0,
-            tags = tags, 
-            sources = sources,
-            filters = filters,
+            tags=tags,
+            sources=sources,
+            filters=filters,
         )
 
     domain_data = defaultdict(
@@ -260,8 +264,12 @@ def domain_stats():
 
     filters = {
         "q": request.args.get("q", ""),
+        "follow": request.args.get("follow", "all"),
+        "indexed": request.args.get("indexed", "all"),
+        "sort": request.args.get("sort", "created"),
+        "order": request.args.get("order", "desc"),
         "tag": request.args.get("tag", ""),
-        "source": request.args.get("source", "")
+        "source": request.args.get("source", ""),
     }
 
     pagination_base_url = url_for(

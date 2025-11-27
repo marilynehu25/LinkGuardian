@@ -60,14 +60,12 @@
     </div>
 
     <form
-        hx-get="/domains/partial/table"
-        hx-target="#domains-table"
-        hx-swap="innerHTML"
-        hx-include="this"
-        class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-900 p-4 rounded-xl"
+        hx-boost="true"
         hx-trigger="change"
+        method="GET"
+        action="/domains"
+        class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-900 p-4 rounded-xl"
     >
-
         <!-- Recherche -->
         <div class="md:col-span-1">
             <label class="text-gray-400 text-sm mb-1">Recherche</label>
